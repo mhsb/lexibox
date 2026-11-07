@@ -32,14 +32,24 @@
 
   /* ================================================================ small UI helpers */
 
+  // Replays a CSS animation that is driven by a class.
+  function restart(node, cls) { node.classList.remove(cls); void node.offsetWidth; node.classList.add(cls); }
+  function reducedMotion() { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); }
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
   var toastTimer = null;
   function toast(msg, ms, isError) {
     var t = $('toast');
     t.textContent = msg;
     t.style.background = isError ? '#8c1d18' : '';
+    t.style.color = isError ? '#fff' : '';
+    t.classList.remove('leaving');
     t.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { t.hidden = true; }, ms || 2600);
+    toastTimer = setTimeout(function () {
+      t.classList.add('leaving');
+      toastTimer = setTimeout(function () { t.hidden = true; t.classList.remove('leaving'); }, 190);
+    }, ms || 2600);
   }
 
   function showProgress(title, text, frac) {
@@ -86,8 +96,11 @@
   function renderBadges() {
     var st = L.stats(state.entries, L.todayStr(), state.settings.intervals.length);
     var b = $('badge-due');
+    var txt = st.due > 99 ? '99+' : String(st.due);
+    var changed = b.textContent !== txt;
     b.hidden = st.due === 0;
-    b.textContent = st.due > 99 ? '99+' : String(st.due);
+    b.textContent = txt;
+    if (changed && st.due) restart(b, 'pop');
   }
 
   /* ================================================================ dictionary loading */
@@ -274,6 +287,7 @@
     $('raw-source').textContent = htmls.join('\n\n---- next entry ----\n\n');
     $('raw-wrap').open = false;
     $('entry-wrap').hidden = false;
+    restart($('entry-wrap'), 'enter');
     $('lookup-hint').hidden = true;
     $('main').scrollTop = 0;
   }
@@ -594,18 +608,23 @@
 
     s.revealed = false;
     show('rv-back', false); show('rv-answer', false); show('rv-show', true);
+    $('rv-bar-fill').style.width = Math.round(s.pos / s.queue.length * 100) + '%';
+    var card = document.querySelector('.rv-card');
+    card.classList.remove('rv-out', 'no');
+    restart(card, 'rv-in');
   }
 
   function revealAnswer() {
     var s = state.session;
-    if (!s || s.done || s.revealed) return;
+    if (!s || s.done || s.revealed || s.busy) return;
     s.revealed = true;
     show('rv-back', true); show('rv-show', false); show('rv-answer', true);
   }
 
   async function answerCard(ok) {
     var s = state.session;
-    if (!s || s.done || !s.revealed) return;
+    if (!s || s.done || !s.revealed || s.busy) return;
+    s.busy = true;
     var item = s.queue[s.pos], e = byId(item.id);
     if (e && !item.retry) {
       var upd = L.answer(e, ok, state.settings, L.todayStr());
@@ -616,6 +635,16 @@
     if (!ok) s.queue.push({ id: item.id, retry: true });
     s.pos++;
     renderBadges();
+    if (!reducedMotion()) {
+      var card = document.querySelector('.rv-card');
+      card.classList.remove('rv-in');
+      card.classList.toggle('no', !ok);
+      card.classList.add('rv-out');
+      $('rv-bar-fill').style.width = Math.round(s.pos / s.queue.length * 100) + '%';
+      await wait(200);
+    }
+    s.busy = false;
+    if (state.session !== s) return;
     renderCard();
   }
 

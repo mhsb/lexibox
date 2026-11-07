@@ -51,13 +51,13 @@ function check(name, cond, extra) {
   if (cond) { passed++; console.log('  ok   ' + name); }
   else { failed++; console.log('  FAIL ' + name + (extra !== undefined ? '  -> ' + JSON.stringify(extra) : '')); }
 }
-async function shot(page, name) { if (SHOTS) await page.screenshot({ path: path.join(SHOTS, name + '.png') }); }
+async function shot(page, name) { if (SHOTS) await page.waitForTimeout(700); if (SHOTS) await page.screenshot({ path: path.join(SHOTS, name + '.png') }); }
 
 (async () => {
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const base = 'http://127.0.0.1:' + server.address().port + '/';
   const browser = await chromium.launch();
-  const context = await browser.newContext({ ...devices['Pixel 7'], acceptDownloads: true });
+  const context = await browser.newContext({ ...devices['Pixel 7'], acceptDownloads: true, colorScheme: process.env.DARK ? 'dark' : 'light' });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
