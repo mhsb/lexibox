@@ -782,10 +782,65 @@
     });
   }
 
+  /* ================================================================ intro tutorial */
+
+  var TOUR = [
+    { title: 'Welcome', html:
+      '<p>Look up words in your own MDict dictionary, keep the ones you want to learn, and review them with Leitner boxes.</p>' +
+      '<p>Everything stays on this phone, and it works offline.</p>' },
+    { title: 'Look up a word', html:
+      '<p>Type in the search box, then tap a suggestion or press <b>Go</b>.</p>' +
+      '<p>Word forms such as <i>ran</i> or <i>running</i> find their base word. Tap a linked word inside a definition to jump to it.</p>' },
+    { title: 'Pick what to remember', html:
+      '<p>Tap a paragraph of the definition to highlight it. <b>+ ¶</b> adds the next paragraph, <b>− ¶</b> takes one back.</p>' +
+      '<div class="tour-entry"><div class="picked">1. to move quickly on foot</div><div class="picked">2. to manage or operate a business</div><div>3. to flow, as water does</div></div>' +
+      '<div class="tour-mock"><span class="grow">2 paragraphs selected</span><span class="b">− ¶</span><span class="b">+ ¶</span><span class="b p">Add</span></div>' +
+      '<p>Prefer your own words? Long-press to select any text. Tap <b>Add</b>, then paste the sentence where you met the word as its context.</p>' },
+    { title: 'Review with boxes', html:
+      '<p>New cards start in box 1 and are due today. <b>Remembered</b> moves a card up a box, so it returns after a longer gap. <b>Forgot</b> sends it back to box 1.</p>' +
+      '<div class="boxes"><div class="box"><b>1</b><span>1 day</span></div><div class="box"><b>2</b><span>2 days</span></div><div class="box"><b>3</b><span>4 days</span></div><div class="box"><b>4</b><span>8 days</span></div><div class="box"><b>5</b><span>16 days</span></div></div>' +
+      '<p>The red number on <b>Review</b> shows how many cards are due. You can change the gaps in Settings.</p>' },
+    { title: 'Keep your notebook safe', html:
+      '<p>Your notebook is stored only in this browser. In <b>Notebook</b>, download a JSON backup now and then, or an Anki file to import into AnkiDroid.</p>' +
+      '<p>In <b>Settings</b> you can switch to a dictionary file (.mdx) from your phone, and reopen this tutorial.</p>' +
+      '<p class="tour-credit">Developed by Hosein Sheibah · <a href="https://sheibah.ir" target="_blank" rel="noopener">Sheibah.ir</a></p>' }
+  ];
+  var tourStep = 0;
+
+  function renderTour() {
+    var last = tourStep === TOUR.length - 1;
+    $('tour-title').textContent = TOUR[tourStep].title;
+    $('tour-body').innerHTML = TOUR[tourStep].html;   // static text defined above
+    $('tour-dots').innerHTML = TOUR.map(function (_, i) { return '<i' + (i === tourStep ? ' class="on"' : '') + '></i>'; }).join('');
+    $('tour-back').hidden = tourStep === 0;
+    $('tour-skip').hidden = last;
+    $('tour-next').textContent = last ? 'Start using the app' : 'Next';
+  }
+
+  function openTour() {
+    tourStep = 0;
+    renderTour();
+    if (!$('tour-dialog').open) $('tour-dialog').showModal();
+  }
+
+  function bindTour() {
+    $('tour-next').addEventListener('click', function () {
+      if (tourStep < TOUR.length - 1) { tourStep++; renderTour(); } else $('tour-dialog').close();
+    });
+    $('tour-back').addEventListener('click', function () { if (tourStep > 0) { tourStep--; renderTour(); } });
+    $('tour-skip').addEventListener('click', function () { $('tour-dialog').close(); });
+    // closing in any way (finish, skip, Esc) counts as seen
+    $('tour-dialog').addEventListener('close', function () {
+      Store.setKV('tourSeen', true).catch(function () { /* not fatal */ });
+    });
+    $('btn-tour').addEventListener('click', openTour);
+  }
+
   /* ================================================================ boot */
 
   async function boot() {
     bindUI();
+    bindTour();
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () { /* offline install is optional */ });
     var st = await Store.init();
     if (st.volatile) $('storage-warning').hidden = false;
@@ -799,6 +854,9 @@
     await loadDictionary();
     var q = new URLSearchParams(location.search).get('q');
     if (q && state.dict) { $('q').value = q; lookupWord(q); }
+    var seen = false;
+    try { seen = !!(await Store.getKV('tourSeen')); } catch (e) { /* show it */ }
+    if (!seen) openTour();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

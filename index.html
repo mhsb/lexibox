@@ -139,6 +139,17 @@
         </div>
         <p id="storage-info" class="hint"></p>
       </div>
+      <div class="panel">
+        <h2>About</h2>
+        <dl class="info">
+          <dt>App</dt><dd>Dictionary Notebook</dd>
+          <dt>Developer</dt><dd>Hosein Sheibah</dd>
+          <dt>Website</dt><dd><a href="https://sheibah.ir" target="_blank" rel="noopener">Sheibah.ir</a></dd>
+        </dl>
+        <div class="btn-row">
+          <button id="btn-tour" type="button">Show the tutorial</button>
+        </div>
+      </div>
     </section>
   </main>
 
@@ -187,6 +198,19 @@
         <button id="cd-save" type="submit" class="primary">Save</button>
       </div>
     </form>
+  </dialog>
+
+  <!-- first-run tutorial (also opened from Settings) -->
+  <dialog id="tour-dialog" aria-labelledby="tour-title">
+    <h3 id="tour-title"></h3>
+    <div id="tour-body"></div>
+    <div id="tour-dots" class="tour-dots" aria-hidden="true"></div>
+    <div class="dialog-actions">
+      <button id="tour-skip" type="button" class="link">Skip</button>
+      <span class="spacer"></span>
+      <button id="tour-back" type="button">Back</button>
+      <button id="tour-next" type="button" class="primary">Next</button>
+    </div>
   </dialog>
 
   <!-- progress while a dictionary is indexed -->

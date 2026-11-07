@@ -157,6 +157,24 @@ dialog h3 { font-size: 1.15rem; }
 .spacer { flex: 1; }
 progress { width: 100%; height: 14px; }
 
+/* tutorial */
+#tour-dialog { padding: 20px 18px 14px; }
+#tour-title { font-size: 1.3rem; margin: 0 0 6px; }
+#tour-body p { margin: 8px 0; }
+#tour-body .boxes { margin: 12px 0 4px; }
+.tour-entry { margin: 12px 0 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+.tour-entry div { padding: 3px 6px; border-radius: 6px; }
+.tour-entry .picked { background: var(--pick); }
+.tour-mock { display: flex; gap: 6px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); font-size: .85rem; color: var(--muted); }
+.tour-mock .grow { flex: 1; }
+.tour-mock .b { padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text); }
+.tour-mock .b.p { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.tour-credit a, #tab-settings .info a { color: var(--link); }
+.tour-credit { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: .9rem; }
+.tour-dots { display: flex; gap: 6px; justify-content: center; margin: 14px 0 2px; }
+.tour-dots i { width: 8px; height: 8px; border-radius: 4px; background: var(--line); }
+.tour-dots i.on { width: 22px; background: var(--accent); }
+
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--nav-h) + 78px + env(safe-area-inset-bottom)); z-index: 60; max-width: 90vw; background: #1c2430; color: #fff; padding: 10px 16px; border-radius: 22px; font-size: .92rem; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
 .toast[hidden] { display: none; }
 [hidden] { display: none !important; }

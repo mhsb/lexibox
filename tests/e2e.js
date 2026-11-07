@@ -68,6 +68,20 @@ async function shot(page, name) { if (SHOTS) await page.screenshot({ path: path.
   await page.waitForFunction(() => !document.getElementById('q').disabled, null, { timeout: 20000 });
   check('bundled dictionary loads and the search box is enabled', true);
   check('dictionary title shown', (await page.textContent('#dict-title')).includes('Test Dictionary A'));
+
+  console.log('Intro tutorial');
+  await page.waitForSelector('#tour-dialog[open]');
+  check('tutorial opens on first launch', (await page.textContent('#tour-title')) === 'Welcome');
+  check('Back is hidden on the first step', await page.isHidden('#tour-back'));
+  for (let i = 0; i < 4; i++) { await page.click('#tour-next'); if (i === 1) await shot(page, '0-tour-step3'); }
+  check('last step shows the developer credit',
+    (await page.textContent('#tour-body')).includes('Hosein Sheibah') &&
+    (await page.getAttribute('#tour-body a', 'href')) === 'https://sheibah.ir');
+  check('last step has no Skip and the button says Start', await page.isHidden('#tour-skip') && (await page.textContent('#tour-next')).includes('Start'));
+  await shot(page, '0-tour');
+  await page.click('#tour-next');
+  await page.waitForSelector('#tour-dialog', { state: 'attached' });
+  check('tutorial closes at the end', !(await page.evaluate(() => document.getElementById('tour-dialog').open)));
   await page.evaluate(() => navigator.serviceWorker && navigator.serviceWorker.ready);
 
   console.log('Lookup');
@@ -182,6 +196,12 @@ async function shot(page, name) { if (SHOTS) await page.screenshot({ path: path.
   check('offline lookup works', true);
   await page.click('.tabs button[data-tab=notebook]');
   check('notebook survives the reload', (await page.$$('#nb-list li')).length === 2);
+  check('tutorial does not come back after a reload', !(await page.evaluate(() => document.getElementById('tour-dialog').open)));
+  await page.click('.tabs [data-tab="settings"]');
+  check('About shows developer and website', (await page.textContent('#tab-settings')).includes('Hosein Sheibah') && (await page.getAttribute('#tab-settings a[href="https://sheibah.ir"]', 'href')) === 'https://sheibah.ir');
+  await page.click('#btn-tour');
+  check('tutorial can be reopened from Settings', await page.evaluate(() => document.getElementById('tour-dialog').open));
+  await page.click('#tour-skip');
   await context.setOffline(false);
 
   console.log('Errors');

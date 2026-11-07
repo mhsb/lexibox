@@ -9,7 +9,7 @@
  */
 'use strict';
 
-var CACHE = 'dictionary-notebook-shell-v1';
+var CACHE = 'dictionary-notebook-shell-v2';
 var SHELL = [
   './',
   'index.html',
