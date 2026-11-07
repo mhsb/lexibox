@@ -204,6 +204,24 @@ async function shot(page, name) { if (SHOTS) await page.waitForTimeout(700); if 
   await page.click('#tour-skip');
   await context.setOffline(false);
 
+  console.log('Share target');
+  const man = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.webmanifest'), 'utf8'));
+  check('manifest declares a share target for text', man.share_target && man.share_target.params.text === 'text' && man.share_target.method === 'GET');
+  await page.goto(base + '?text=' + encodeURIComponent('A zebra runs fast, today.'));
+  await page.waitForFunction(() => !document.getElementById('q').disabled, null, { timeout: 20000 });
+  await page.waitForSelector('#ctx-bar:not([hidden])');
+  check('a shared sentence shows as tappable words', (await page.$$('#ctx-words .ctx-w')).length === 5);
+  check('the shared URL is cleaned', !(await page.evaluate(() => location.search)));
+  await page.click('#ctx-words .ctx-w:has-text("zebra")');
+  await page.waitForFunction(() => document.getElementById('entry-word').textContent === 'zebra');
+  await page.click('#btn-add-word');
+  await page.waitForSelector('#card-dialog[open]');
+  check('the shared sentence is the card context', (await page.inputValue('#cd-ctx')) === 'A zebra runs fast, today.');
+  await page.click('#cd-cancel');
+  await page.goto(base + '?text=' + encodeURIComponent('zebra'));
+  await page.waitForFunction(() => document.getElementById('entry-word').textContent === 'zebra', null, { timeout: 20000 });
+  check('a single shared word is looked up straight away', (await page.isHidden('#ctx-bar')));
+
   console.log('Errors');
   check('no console or page errors', errors.length === 0, errors);
 

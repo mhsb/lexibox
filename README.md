@@ -27,6 +27,13 @@ headers: tab separated, HTML on, note type Basic, deck name from Settings, GUID 
 (re-importing updates cards instead of duplicating them). Leitner progress is not transferred;
 Anki schedules by itself. The JSON keeps the real progress.
 
+## Quick lookup from other apps (Android)
+After the app is installed ("Add to Home screen" / "Install app"), select a word or sentence in any
+app, tap **Share**, and choose Dictionary Notebook. One to three words are looked up at once; a longer
+sentence is shown as tappable words and becomes the context of the cards you add.
+A web app cannot add itself to the Copy / Web search row of the selection menu: that needs a native
+Android app (the "Process text" action), which the later Android version can provide.
+
 ## Limits
 - Supported: MDX v1/v2, zlib, LZO or stored blocks, UTF-8/UTF-16/GBK/Big5, key-index encryption.
 - Not supported: MDX v3, registration-locked (record-encrypted) files, `.mdd` media.

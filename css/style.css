@@ -134,6 +134,13 @@ textarea { resize: vertical; }
 .empty .btn { margin-top: 10px; }
 #lookup-hint { padding: 40px 20px; text-align: center; font: italic 1.12rem/1.55 var(--serif); color: var(--muted); }
 
+/* ---------- shared sentence ---------- */
+.ctx-bar { margin: 0 0 12px; padding: 12px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 18px; animation: rise .3s var(--ease) both; }
+.ctx-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: .82rem; color: var(--muted); }
+#ctx-words { margin: 6px 0 0; line-height: 1.2; }
+.ctx-w { min-height: 36px; padding: 2px 8px; margin: 2px 1px; border-radius: 10px; border-color: transparent; background: none; font-weight: 400; font-size: 1.05rem; }
+.ctx-w.on { background: var(--accent-soft); border-color: var(--accent); }
+
 /* ---------- entry ---------- */
 .entry-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 0 8px; }
 .entry-head h2 { font: 600 2.1rem/1.08 var(--serif); letter-spacing: -.015em; overflow-wrap: anywhere; }

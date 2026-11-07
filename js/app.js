@@ -27,7 +27,8 @@
     chunkEls: [],         // chunk elements of the entry on screen
     pick: null,           // { mode: 'chunks', start, end } | { mode: 'text', text }
     cardCtx: null,        // { entry } while the card dialog is open
-    session: null         // review session
+    session: null,        // review session
+    sharedContext: ''     // sentence shared from another app; becomes the context of new cards
   };
 
   /* ================================================================ small UI helpers */
@@ -385,7 +386,7 @@
     $('cd-title').textContent = ent ? 'Edit card' : 'Add to notebook';
     $('cd-word').value = ent ? ent.word : (opts.word || '');
     $('cd-def').value = ent ? ent.definition : (opts.definition || '');
-    $('cd-ctx').value = ent ? ent.context : '';
+    $('cd-ctx').value = ent ? ent.context : state.sharedContext;
     $('cd-delete').hidden = $('cd-reset').hidden = !ent;
     var meta = $('cd-meta');
     meta.hidden = !ent;
@@ -819,7 +820,8 @@
       '<p>Everything stays on this phone, and it works offline.</p>' },
     { title: 'Look up a word', html:
       '<p>Type in the search box, then tap a suggestion or press <b>Go</b>.</p>' +
-      '<p>Word forms such as <i>ran</i> or <i>running</i> find their base word. Tap a linked word inside a definition to jump to it.</p>' },
+      '<p>Word forms such as <i>ran</i> or <i>running</i> find their base word. Tap a linked word inside a definition to jump to it.</p>' +
+      '<p>In any other app, select a word or a sentence, tap <b>Share</b> and choose Dictionary Notebook (once the app is installed). A sentence becomes the context for the cards you add.</p>' },
     { title: 'Pick what to remember', html:
       '<p>Tap a paragraph of the definition to highlight it. <b>+ ¶</b> adds the next paragraph, <b>− ¶</b> takes one back.</p>' +
       '<div class="tour-entry"><div class="picked">1. to move quickly on foot</div><div class="picked">2. to manage or operate a business</div><div>3. to flow, as water does</div></div>' +
@@ -863,6 +865,47 @@
       Store.setKV('tourSeen', true).catch(function () { /* not fatal */ });
     });
     $('btn-tour').addEventListener('click', openTour);
+    $('ctx-clear').addEventListener('click', function () { state.sharedContext = ''; renderSharedBar(); });
+  }
+
+  /* ================================================================ text shared from other apps */
+
+  var WORD_EDGES = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
+
+  function renderSharedBar() {
+    var bar = $('ctx-bar'), box = $('ctx-words');
+    box.textContent = '';
+    bar.hidden = !state.sharedContext;
+    if (!state.sharedContext) return;
+    state.sharedContext.split(/\s+/).forEach(function (tok) {
+      var word = tok.replace(WORD_EDGES, '');
+      if (!word) { box.appendChild(document.createTextNode(tok + ' ')); return; }
+      var b = el('button', 'ctx-w', tok);
+      b.type = 'button';
+      b.addEventListener('click', function () {
+        Array.prototype.forEach.call(box.querySelectorAll('.ctx-w.on'), function (x) { x.classList.remove('on'); });
+        b.classList.add('on');
+        $('q').value = word;
+        lookupWord(word);
+      });
+      box.appendChild(b);
+    });
+  }
+
+  // A shared word is looked up at once; a longer text is kept as the context sentence.
+  function handleShared(text) {
+    var t = String(text || '').replace(/\s+/g, ' ').replace(/^["“”'‘’]+|["“”'‘’]+$/g, '').trim();
+    if (!t) return;
+    if (t.split(' ').length <= 3) {
+      state.sharedContext = '';
+      renderSharedBar();
+      $('q').value = t;
+      lookupWord(t);
+    } else {
+      state.sharedContext = t.slice(0, 600);
+      renderSharedBar();
+      showTab('lookup');
+    }
   }
 
   /* ================================================================ boot */
@@ -881,8 +924,11 @@
     renderBadges();
     Store.requestPersist();
     await loadDictionary();
-    var q = new URLSearchParams(location.search).get('q');
+    var params = new URLSearchParams(location.search);
+    var q = params.get('q'), shared = params.get('text') || params.get('title');
     if (q && state.dict) { $('q').value = q; lookupWord(q); }
+    else if (shared) handleShared(shared);
+    if (q || shared) { try { history.replaceState(null, '', location.pathname); } catch (e) { /* ignore */ } }
     var seen = false;
     try { seen = !!(await Store.getKV('tourSeen')); } catch (e) { /* show it */ }
     if (!seen) openTour();
