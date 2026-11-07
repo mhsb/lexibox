@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Dictionary Notebook</title>
+  <meta name="description" content="Offline MDX dictionary with a Leitner vocabulary notebook and AnkiDroid export.">
+  <meta name="theme-color" content="#1f5f99">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Dictionary Notebook</h1>
+    <span id="dict-title" class="dict-title"></span>
+  </header>
+  <div id="storage-warning" class="banner" hidden>Storage is unavailable in this browser mode: your notebook will not be saved. Export a backup often.</div>
+
+  <main id="main">
+    <!-- ============================ LOOKUP ============================ -->
+    <section id="tab-lookup" class="tab active" aria-label="Dictionary">
+      <form id="search-form" class="searchbar" autocomplete="off">
+        <input id="q" type="search" placeholder="Search a word" autocomplete="off" autocapitalize="none"
+               autocorrect="off" spellcheck="false" enterkeyhint="search" aria-label="Search a word" disabled>
+        <button type="submit" class="primary">Go</button>
+      </form>
+      <ul id="suggest" class="suggest" hidden></ul>
+
+      <div id="empty-state" class="empty" hidden>
+        <p id="empty-msg"></p>
+        <label class="btn primary file-btn">Choose a dictionary file (.mdx)
+          <input id="file-dict-empty" type="file" hidden>
+        </label>
+      </div>
+
+      <div id="lookup-hint" class="hint" hidden>Type a word above. Tap a paragraph of a definition to pick it, or long-press to select your own text, then add it to your notebook.</div>
+
+      <div id="entry-wrap" hidden>
+        <div class="entry-head">
+          <h2 id="entry-word"></h2>
+          <button id="btn-add-word" type="button" class="primary small">＋ Add to notebook</button>
+        </div>
+        <p id="entry-note" class="note" hidden></p>
+        <div id="entry-view" class="entry-view"></div>
+        <details id="raw-wrap" class="raw">
+          <summary>Raw entry source</summary>
+          <pre id="raw-source"></pre>
+        </details>
+      </div>
+    </section>
+
+    <!-- ============================ REVIEW ============================ -->
+    <section id="tab-review" class="tab" aria-label="Review">
+      <div id="rv-idle" class="panel">
+        <h2>Review</h2>
+        <p id="rv-summary" class="lead"></p>
+        <button id="rv-start" type="button" class="primary big">Start review</button>
+        <p id="rv-next" class="hint"></p>
+      </div>
+      <div id="rv-session" class="panel" hidden>
+        <div class="rv-top"><span id="rv-progress"></span><button id="rv-quit" type="button" class="link">End session</button></div>
+        <div class="rv-card">
+          <div id="rv-front"></div>
+          <div id="rv-back" hidden></div>
+        </div>
+        <button id="rv-show" type="button" class="primary big">Show answer</button>
+        <div id="rv-answer" class="rv-answer" hidden>
+          <button id="rv-forgot" type="button" class="danger big">Forgot</button>
+          <button id="rv-ok" type="button" class="success big">Remembered</button>
+        </div>
+      </div>
+      <div id="rv-done" class="panel" hidden>
+        <h2>Session finished</h2>
+        <p id="rv-done-text" class="lead"></p>
+        <button id="rv-back-home" type="button" class="primary big">Done</button>
+      </div>
+    </section>
+
+    <!-- ============================ NOTEBOOK ============================ -->
+    <section id="tab-notebook" class="tab" aria-label="Notebook">
+      <div class="panel">
+        <h2>Notebook</h2>
+        <p id="nb-summary" class="lead"></p>
+        <div id="nb-boxes" class="boxes"></div>
+        <div class="btn-row">
+          <button id="btn-backup" type="button" class="primary">Download backup (JSON)</button>
+          <button id="btn-anki" type="button">Export for Anki</button>
+          <label class="btn file-btn">Restore backup<input id="file-backup" type="file" accept=".json,application/json" hidden></label>
+        </div>
+        <p id="nb-backup-info" class="hint"></p>
+        <input id="nb-filter" type="search" placeholder="Filter cards" aria-label="Filter cards" autocomplete="off">
+        <ul id="nb-list" class="cards"></ul>
+        <p id="nb-more" class="hint" hidden></p>
+      </div>
+    </section>
+
+    <!-- ============================ SETTINGS ============================ -->
+    <section id="tab-settings" class="tab" aria-label="Settings">
+      <div class="panel">
+        <h2>Dictionary</h2>
+        <dl id="dict-info" class="info"></dl>
+        <div class="btn-row">
+          <label class="btn primary file-btn">Choose dictionary file<input id="file-dict" type="file" hidden></label>
+          <button id="btn-bundled" type="button">Use the bundled dictionary</button>
+        </div>
+        <p class="hint">Pick an <b>.mdx</b> file from your phone. It is copied into the app and works offline. Resource files (.mdd) are not needed.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Review</h2>
+        <label class="field">Box intervals in days
+          <input id="set-intervals" type="text" inputmode="numeric" autocomplete="off">
+          <small>One number per box. A correct answer moves a card up one box; a wrong answer sends it back to box 1. Correct in the last box means learned.</small>
+        </label>
+        <label class="field">Cards per session (0 = no limit)
+          <input id="set-limit" type="number" min="0" max="1000" inputmode="numeric">
+        </label>
+        <label class="check"><input id="set-ctx-front" type="checkbox"> Show the context sentence on the front of cards (review and Anki)</label>
+      </div>
+
+      <div class="panel">
+        <h2>Anki export</h2>
+        <label class="field">Deck name
+          <input id="set-deck" type="text" autocomplete="off">
+        </label>
+        <label class="field">Tag added to every card
+          <input id="set-tag" type="text" autocomplete="off">
+        </label>
+        <p class="hint">In AnkiDroid: open the side menu → <b>Import</b> (or ⋮ → Import), choose the exported .txt file, check the note type is <b>Basic</b> and the first column is mapped to <b>GUID</b>. Importing the same file again updates cards instead of duplicating them.</p>
+      </div>
+
+      <div class="panel">
+        <h2>App</h2>
+        <div class="btn-row">
+          <button id="btn-install" type="button" hidden>Install app</button>
+          <button id="btn-wipe" type="button" class="danger">Delete all my notebook data</button>
+        </div>
+        <p id="storage-info" class="hint"></p>
+      </div>
+    </section>
+  </main>
+
+  <!-- selection action bar -->
+  <div id="actionbar" class="actionbar" hidden>
+    <span id="ab-text"></span>
+    <span class="ab-buttons">
+      <button id="ab-prev" type="button" aria-label="Select one paragraph less">− ¶</button>
+      <button id="ab-next" type="button" aria-label="Select one more paragraph">+ ¶</button>
+      <button id="ab-add" type="button" class="primary">Add</button>
+      <button id="ab-clear" type="button" aria-label="Clear selection">✕</button>
+    </span>
+  </div>
+
+  <nav class="tabs" aria-label="Sections">
+    <button type="button" data-tab="lookup" class="active"><span class="ico">📖</span>Dictionary</button>
+    <button type="button" data-tab="review"><span class="ico">🔁</span>Review<span id="badge-due" class="badge" hidden></span></button>
+    <button type="button" data-tab="notebook"><span class="ico">🗂️</span>Notebook</button>
+    <button type="button" data-tab="settings"><span class="ico">⚙️</span>Settings</button>
+  </nav>
+
+  <!-- add / edit card -->
+  <dialog id="card-dialog">
+    <form id="card-form" method="dialog" autocomplete="off">
+      <h3 id="cd-title">Add to notebook</h3>
+      <label class="field">Word
+        <input id="cd-word" type="text" autocapitalize="none" spellcheck="false" required>
+      </label>
+      <p id="cd-dup" class="note" hidden></p>
+      <label class="field">Definition (the part you want to remember)
+        <textarea id="cd-def" rows="5" placeholder="Select text in the entry first, or type here"></textarea>
+      </label>
+      <label class="field">Context sentence
+        <textarea id="cd-ctx" rows="3" placeholder="The sentence where you met the word (optional)"></textarea>
+      </label>
+      <div class="btn-row">
+        <button id="cd-paste" type="button" class="small">Paste context</button>
+      </div>
+      <p id="cd-meta" class="hint" hidden></p>
+      <p id="cd-error" class="error" hidden></p>
+      <div class="dialog-actions">
+        <button id="cd-delete" type="button" class="danger" hidden>Delete</button>
+        <button id="cd-reset" type="button" hidden>Reset progress</button>
+        <span class="spacer"></span>
+        <button id="cd-cancel" type="button">Cancel</button>
+        <button id="cd-save" type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- progress while a dictionary is indexed -->
+  <dialog id="progress-dialog">
+    <h3 id="pg-title">Preparing dictionary</h3>
+    <p id="pg-text" class="hint"></p>
+    <progress id="pg-bar" max="100"></progress>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/leitner.js"></script>
+  <script src="js/mdict.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
