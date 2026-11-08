@@ -416,3 +416,29 @@ progress:indeterminate { background: linear-gradient(90deg, transparent, var(--a
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; transition-duration: .01ms !important; }
 }
+
+/* ---------- search tab, demo coach ---------- */
+.rd-pull { display: none; flex: none; align-self: center; align-items: center; gap: 4px; height: 28px; margin-top: 6px; padding: 0 14px 0 10px;
+  border: 1px solid var(--line); border-radius: 99px; background: var(--panel); color: var(--muted); font: 600 .76rem var(--font); cursor: pointer; box-shadow: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.06)); }
+.rd-pull svg { width: 16px; height: 16px; }
+body.reading .rd-pull { display: inline-flex; animation: pull-nudge 1.6s var(--ease) .8s 3; }
+body.reading.search-open .rd-pull { visibility: hidden; }
+@keyframes pull-nudge { 0%, 100% { transform: none; } 35% { transform: translateY(5px); } 65% { transform: translateY(1px); } }
+.chip.demo { color: var(--accent); border-color: var(--accent); border-style: solid; background: transparent; }
+
+.coach { position: fixed; z-index: 40; left: 14px; right: 14px; max-width: 460px; margin-inline: auto;
+  bottom: calc(var(--nav-h) + 34px + env(safe-area-inset-bottom)); padding: 12px 14px 12px; border-radius: 18px;
+  background: #3346d3; color: #fff; box-shadow: 0 14px 40px rgba(20, 30, 90, .35); }
+.coach.coach-in { animation: coach-in .45s var(--spring) both; }
+body.sheet-open .coach { bottom: auto; top: calc(var(--topbar-h, 56px) + 8px); }
+.coach[hidden] { display: none; }
+.coach-top { display: flex; justify-content: space-between; align-items: center; font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; opacity: .85; }
+.coach .link { color: #fff; opacity: .9; font-size: .78rem; text-transform: none; letter-spacing: 0; }
+.coach p { margin: 6px 0 10px; font-size: .98rem; line-height: 1.45; }
+.coach-actions { display: flex; justify-content: flex-end; }
+.coach-btn { border: 0; border-radius: 99px; padding: 8px 18px; font: 700 .88rem var(--font); background: #fff; color: #3346d3; cursor: pointer; }
+@keyframes coach-in { from { opacity: 0; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes coach-glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(51, 70, 211, .55); } 60% { box-shadow: 0 0 0 10px rgba(51, 70, 211, 0); } }
+body[data-coach="grip"] #sheet-grip .grip-bar { animation: coach-glow 1.3s ease-out infinite; }
+body[data-coach="add"] #btn-add-word, body[data-coach="drawer"] .rd-pull { animation: coach-glow 1.3s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) { body.reading .rd-pull, .coach, body[data-coach] * { animation: none !important; } }

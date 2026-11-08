@@ -35,10 +35,11 @@ A web app cannot add itself to the Copy / Web search row of the selection menu: 
 Android app (the "Process text" action), which the later Android version can provide.
 
 ## Reader
+New users: **Try the demo** (on the home page and at the end of the tutorial) opens a short text and a coach walks through tapping a word, resizing the panel, adding a card, the search tab and turning pages.
 Tap **Open a book or text file** (between the search field and the entry) to read an **EPUB, DOCX,
 Markdown, HTML or plain text** file, or share longer text from another app. It fills the home page and is
 paginated; headings, bold/italic, lists, quotes and tables are kept. Your place, text size and font are remembered.
-- Swipe sideways or tap the empty page edges to turn pages. Swipe down to show the search field
+- Swipe sideways or tap the empty page edges to turn pages. Swipe down, or tap the **Search & options** tab at the top, to show the search field
   (with Contents, Text size, Open and Close); swipe up or tap the page to hide it.
 - Tap a word: its definition rises from the bottom. Drag the handle to resize the panel, or press the
   arrow to hide it. "Add to notebook" fills the context with the sentence around the word.

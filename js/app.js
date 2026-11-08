@@ -861,8 +861,8 @@
     $('tour-body').innerHTML = TOUR[tourStep].html;   // static text defined above
     $('tour-dots').innerHTML = TOUR.map(function (_, i) { return '<i' + (i === tourStep ? ' class="on"' : '') + '></i>'; }).join('');
     $('tour-back').hidden = tourStep === 0;
-    $('tour-skip').hidden = last;
-    $('tour-next').textContent = last ? 'Start using the app' : 'Next';
+    $('tour-skip').textContent = last ? 'Not now' : 'Skip';
+    $('tour-next').textContent = last ? 'Try the demo' : 'Next';
   }
 
   function openTour() {
@@ -873,7 +873,7 @@
 
   function bindTour() {
     $('tour-next').addEventListener('click', function () {
-      if (tourStep < TOUR.length - 1) { tourStep++; renderTour(); } else $('tour-dialog').close();
+      if (tourStep < TOUR.length - 1) { tourStep++; renderTour(); } else { $('tour-dialog').close(); startDemo(); }
     });
     $('tour-back').addEventListener('click', function () { if (tourStep > 0) { tourStep--; renderTour(); } });
     $('tour-skip').addEventListener('click', function () { $('tour-dialog').close(); });
@@ -930,6 +930,7 @@
     if (!state.doc) return;
     if (!window.confirm('Close “' + state.doc.title + '”? Your reading position will be forgotten.')) return;
     Reader.close();
+    if (coach.on) coachStop();
     state.doc = null;
     state.context = '';
     try { await Store.setKV('doc', null); await Store.setKV('docPos', null); } catch (e) { /* not fatal */ }
@@ -952,10 +953,84 @@
     } catch (e) { toast(e.message, 5000, true); }
   }
 
+  /* ================================================================ guided demo */
+
+  var DEMO_MD = [
+    '# A Walk in the Morning', '',
+    '*A short demo text. Tap any word to look it up.*', '',
+    'Maya woke early and walked down to the harbour. The air was cool, and a faint mist hung over the water. She had always found the quiet hour before sunrise strangely comforting.', '',
+    '## The market', '',
+    'By the time she reached the market, the stalls were opening one by one. A vendor was arranging oranges into a careful pyramid, and the smell of fresh bread drifted from the bakery on the corner. "You are up with the gulls," he said with a smile.', '',
+    'She bought a warm loaf and a small bag of figs, then wandered on between crates of silver fish and baskets of herbs. Every stall had its own noise: scales clanking, knives tapping, a radio playing somewhere behind a curtain.', '',
+    '## The lighthouse', '',
+    'At the far end of the quay stood the old lighthouse, its paint peeling after countless storms. Maya climbed the narrow stairs slowly, counting each step. At the top the wind was fierce, but the view was worth every breath.', '',
+    '> The sea was calm, and the horizon looked almost within reach.', '',
+    'Below her, the first boats were leaving the harbour. She ate a fig, watched the light turn from grey to gold, and decided that mornings like this deserved to be remembered.', '',
+    '## What she carried home', '',
+    '- a warm loaf of bread', '- a bag of sweet figs', '- one quiet, unhurried hour', '',
+    'On the way back she stopped to listen to the gulls, and thought how few words she would need to describe the morning, yet how many she would keep trying to find.', ''
+  ].join('\n');
+
+  var COACH = [
+    { ev: 'word', text: 'Tap any word in the text to look it up.' },
+    { ev: 'grip', text: 'The definition rises from the bottom. Drag the handle at its top to change its height, or press the arrow to hide it.', tag: 'grip' },
+    { ev: 'dialog', text: 'Tap “Add to notebook”. The sentence you tapped is saved as the card’s context. You can Cancel if you don’t want this card.', tag: 'add' },
+    { ev: 'drawer', text: 'Need another word? Swipe down, or tap the tab at the top, to show the search box and options.', tag: 'drawer', hideSheet: true },
+    { ev: 'page', text: 'Swipe sideways, or tap the empty edges of the page, to turn it.', startPos: true },
+    { ev: null, text: 'That’s it! Use Open in the search panel to read your own book, or Paste text to read something you copied.', last: true }
+  ];
+  var coach = { on: false, step: 0, pos: null, timer: 0 };
+
+  function coachShow() {
+    var st = COACH[coach.step];
+    $('coach-text').textContent = st.text;
+    $('coach-n').textContent = st.last ? 'Demo complete' : 'Demo · step ' + (coach.step + 1) + ' of ' + (COACH.length - 1);
+    $('coach-next').textContent = st.last ? 'Done' : 'Skip step';
+    $('coach-end').hidden = !!st.last;
+    document.body.setAttribute('data-coach', st.tag || '');
+    var c = $('coach');
+    c.hidden = false;
+    restart(c, 'coach-in');
+    if (st.hideSheet) Reader.hideSheet();
+    if (st.startPos) coach.pos = JSON.stringify(Reader.getPos());
+  }
+  function coachNext() {
+    if (!coach.on) return;
+    clearTimeout(coach.timer);
+    if (COACH[coach.step].last) { coachStop(); return; }
+    coach.step++;
+    coachShow();
+  }
+  function coachStop() {
+    coach.on = false;
+    clearTimeout(coach.timer);
+    $('coach').hidden = true;
+    document.body.removeAttribute('data-coach');
+    Store.setKV('demoSeen', true).catch(function () { /* not fatal */ });
+  }
+  function coachEvent(name, pos) {
+    if (!coach.on || COACH[coach.step].ev !== name) return;
+    if (name === 'page' && JSON.stringify(pos) === coach.pos) return;
+    var at = coach.step;
+    clearTimeout(coach.timer);
+    coach.timer = setTimeout(function () { if (coach.on && coach.step === at) coachNext(); }, name === 'word' ? 900 : 450);
+  }
+
+  async function startDemo() {
+    if (state.doc && !window.confirm('The demo replaces the book that is open now. Continue?')) return;
+    var doc = null;
+    try { doc = await Docs.open(new File([DEMO_MD], 'demo.md', { type: 'text/markdown' })); } catch (e) { toast(e.message, 5000, true); return; }
+    await startReading(doc);
+    coach.on = true;
+    coach.step = 0;
+    coachShow();
+  }
+
   function bindReader() {
     Reader.init({
-      onWord: function (word, sentence) { lookupWord(word, sentence); },
-      onPosition: function (pos) { Store.setKV('docPos', pos).catch(function () { /* not fatal */ }); },
+      onWord: function (word, sentence) { lookupWord(word, sentence); coachEvent('word'); },
+      onDrawer: function () { coachEvent('drawer'); },
+      onPosition: function (pos) { Store.setKV('docPos', pos).catch(function () { /* not fatal */ }); coachEvent('page', pos); },
       onPrefs: function (p) { Store.setKV('readerPrefs', p).catch(function () { /* not fatal */ }); }
     });
     $('btn-open-doc').addEventListener('click', function () { $('file-doc').click(); });
@@ -963,6 +1038,11 @@
     $('file-doc').addEventListener('change', function () { var f = this.files && this.files[0]; this.value = ''; openDocFile(f); });
     $('btn-paste-doc').addEventListener('click', pasteText);
     $('rd-btn-close').addEventListener('click', function () { Reader.closeDrawer(); closeBook(); });
+    $('btn-demo').addEventListener('click', startDemo);
+    $('coach-next').addEventListener('click', function () { coachNext(); });
+    $('coach-end').addEventListener('click', coachStop);
+    $('sheet-grip').addEventListener('pointerup', function () { coachEvent('grip'); });
+    $('card-dialog').addEventListener('close', function () { coachEvent('dialog'); });
     window.addEventListener('resize', setTopbarVar);
     setTopbarVar();
   }

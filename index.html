@@ -42,11 +42,13 @@
         <div id="import-row" class="import-row">
           <button id="btn-open-doc" type="button" class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>Open a book or text file</button>
           <button id="btn-paste-doc" type="button" class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="5" width="12" height="16" rx="2"/><path d="M9 5V4h6v1M9 11h6M9 15h4"/></svg>Paste text</button>
+          <button id="btn-demo" type="button" class="chip demo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>Try the demo</button>
         </div>
         <input id="file-doc" type="file" hidden>
       </div>
 
       <div id="reader" class="reader" hidden>
+        <button id="rd-pull" type="button" class="rd-pull" aria-label="Show search and options"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg><span>Search &amp; options</span></button>
         <div id="rd-view" class="rd-view" aria-label="Book text"><div id="rd-flow" class="rd-flow"></div></div>
         <div class="rd-foot"><span id="rd-prog" class="rd-prog"></span><span id="rd-title"></span><span id="rd-pos"></span></div>
       </div>
@@ -248,6 +250,12 @@
   </dialog>
 
   <!-- first-run tutorial (also opened from Settings) -->
+    <div id="coach" class="coach" role="status" aria-live="polite" hidden>
+    <div class="coach-top"><span id="coach-n"></span><button id="coach-end" type="button" class="link">End demo</button></div>
+    <p id="coach-text"></p>
+    <div class="coach-actions"><button id="coach-next" type="button" class="coach-btn">Next</button></div>
+  </div>
+
   <dialog id="tour-dialog" aria-labelledby="tour-title">
     <h3 id="tour-title"></h3>
     <div id="tour-body"></div>

@@ -77,9 +77,9 @@ async function shot(page, name) { if (SHOTS) await page.waitForTimeout(700); if 
   check('last step shows the developer credit',
     (await page.textContent('#tour-body')).includes('Hosein Sheibah') &&
     (await page.getAttribute('#tour-body a', 'href')) === 'https://sheibah.ir');
-  check('last step has no Skip and the button says Start', await page.isHidden('#tour-skip') && (await page.textContent('#tour-next')).includes('Start'));
+  check('last step offers the demo or Not now', (await page.textContent('#tour-skip')) === 'Not now' && (await page.textContent('#tour-next')).includes('demo'));
   await shot(page, '0-tour');
-  await page.click('#tour-next');
+  await page.click('#tour-skip');
   await page.waitForSelector('#tour-dialog', { state: 'attached' });
   check('tutorial closes at the end', !(await page.evaluate(() => document.getElementById('tour-dialog').open)));
   await page.evaluate(() => navigator.serviceWorker && navigator.serviceWorker.ready);
@@ -270,6 +270,13 @@ async function shot(page, name) { if (SHOTS) await page.waitForTimeout(700); if 
   const first = await page.evaluate(() => document.getElementById('rd-flow').querySelector('h1') && true);
   check('swiping back returns to the first page', !!first);
 
+  check('a visible tab at the top hints at the hidden search', await page.isVisible('#rd-pull'));
+  await page.click('#rd-pull');
+  check('tapping the tab shows the search field', await page.evaluate(() => document.body.classList.contains('search-open')));
+  await page.click('#flow-none', { timeout: 100 }).catch(() => {});
+  await page.evaluate(() => document.getElementById('q').blur());
+  await swipe(200, 520, 200, 250);
+  await page.waitForFunction(() => !document.body.classList.contains('search-open'));
   // swipe down shows the search field
   await swipe(200, 250, 200, 520);
   await page.waitForFunction(() => document.body.classList.contains('search-open'), null, { timeout: 3000 }).catch(() => {});
@@ -347,6 +354,43 @@ async function shot(page, name) { if (SHOTS) await page.waitForTimeout(700); if 
   await page.evaluate(() => document.getElementById('rd-btn-close').click());
   await page.waitForFunction(() => !document.body.classList.contains('reading'));
   check('closing the book returns to the plain home page', await page.isVisible('#btn-open-doc'));
+
+  console.log('Guided demo');
+  check('home page offers the demo', await page.isVisible('#btn-demo'));
+  await page.click('#btn-demo');
+  await page.waitForFunction(() => document.body.classList.contains('reading'));
+  await page.waitForSelector('#coach:not([hidden])');
+  check('demo opens a text with headings and the coach starts at step 1', (await page.textContent('#rd-flow h1')) === 'A Walk in the Morning' && (await page.textContent('#coach-n')).includes('step 1'));
+  await shot(page, '12-demo-1');
+  await page.waitForTimeout(600);
+  const dp = await wordPos('harbour');
+  await page.mouse.click(dp.x, dp.y);
+  await page.waitForFunction(() => document.getElementById('coach-n').textContent.includes('step 2'), null, { timeout: 5000 });
+  check('tapping a word advances the coach', true);
+  await shot(page, '13-demo-2');
+  const g2 = await page.evaluate(() => { const r = document.getElementById('sheet-grip').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + 10 }; });
+  await swipe(g2.x, g2.y, g2.x, g2.y - 80);
+  await page.waitForFunction(() => document.getElementById('coach-n').textContent.includes('step 3'), null, { timeout: 5000 });
+  check('dragging the handle advances the coach', true);
+  await page.waitForTimeout(500);
+  // the test dictionary has no entry for 'harbour', so the add button is not shown: skip this step manually
+  await page.click('#coach-next');
+  await page.waitForFunction(() => document.getElementById('coach-n').textContent.includes('step 4'), null, { timeout: 5000 });
+  check('the coach reaches step 4 and hides the sheet', !(await page.evaluate(() => document.body.classList.contains('sheet-open'))));
+  await shot(page, '14-demo-4');
+  await page.click('#rd-pull');
+  await page.waitForFunction(() => document.getElementById('coach-n').textContent.includes('step 5'), null, { timeout: 5000 });
+  await page.evaluate(() => document.getElementById('q').blur());
+  await page.evaluate(() => document.body.classList.remove('search-open'));
+  await page.keyboard.press('ArrowRight');
+  await page.waitForFunction(() => document.getElementById('coach-text').textContent.includes('That’s it'), null, { timeout: 5000 });
+  check('the demo runs through to the last step', true);
+  await shot(page, '15-demo-end');
+  await page.click('#coach-next');
+  check('Done hides the coach', await page.isHidden('#coach'));
+  page.once('dialog', d => d.accept());
+  await page.evaluate(() => document.getElementById('rd-btn-close').click());
+  await page.waitForFunction(() => !document.body.classList.contains('reading'));
 
   console.log('Share target');
   const man = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.webmanifest'), 'utf8'));

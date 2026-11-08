@@ -402,6 +402,7 @@
 
   function openDrawer() {
     document.body.classList.add('search-open');
+    if (cb.onDrawer) cb.onDrawer();
     var q = $('q');
     q.focus();
     q.select();
@@ -515,6 +516,7 @@
   function init(opts) {
     cb = opts || {};
     bindGestures();
+    $('rd-pull').addEventListener('click', openDrawer);
     bindGrip();
     $('rd-btn-toc').addEventListener('click', function () { closeDrawer(); openToc(); });
     $('rd-btn-aa').addEventListener('click', function () { closeDrawer(); $('prefs-dialog').showModal(); });
