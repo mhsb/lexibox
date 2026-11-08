@@ -23,40 +23,62 @@
   <main id="main">
     <!-- ============================ LOOKUP ============================ -->
     <section id="tab-lookup" class="tab active" aria-label="Dictionary">
-      <form id="search-form" class="searchbar" autocomplete="off">
-        <label class="sb">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
-          <input id="q" type="search" placeholder="Search a word" autocomplete="off" autocapitalize="none"
-                 autocorrect="off" spellcheck="false" enterkeyhint="search" aria-label="Search a word" disabled>
-        </label>
-        <button type="submit" class="primary">Go</button>
-      </form>
-      <div id="ctx-bar" class="ctx-bar" hidden>
-        <div class="ctx-head"><span>Shared sentence: tap a word to look it up</span><button id="ctx-clear" type="button" class="link">Clear</button></div>
-        <p id="ctx-words"></p>
-      </div>
-      <ul id="suggest" class="suggest" hidden></ul>
-
-      <div id="empty-state" class="empty" hidden>
-        <p id="empty-msg"></p>
-        <label class="btn primary file-btn">Choose a dictionary file (.mdx)
-          <input id="file-dict-empty" type="file" hidden>
-        </label>
-      </div>
-
-      <div id="lookup-hint" class="hint" hidden>Type a word above. Tap a paragraph of a definition to pick it, or long-press to select your own text, then add it to your notebook.</div>
-
-      <div id="entry-wrap" hidden>
-        <div class="entry-head">
-          <h2 id="entry-word"></h2>
-          <button id="btn-add-word" type="button" class="primary small">＋ Add to notebook</button>
+      <div id="drawer" class="drawer">
+        <form id="search-form" class="searchbar" autocomplete="off">
+          <label class="sb">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+            <input id="q" type="search" placeholder="Search a word" autocomplete="off" autocapitalize="none"
+                   autocorrect="off" spellcheck="false" enterkeyhint="search" aria-label="Search a word" disabled>
+          </label>
+          <button type="submit" class="primary">Go</button>
+        </form>
+        <div id="rd-tools" class="rd-tools">
+          <button id="rd-btn-toc" type="button" class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>Contents</button>
+          <button id="rd-btn-aa" type="button" class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18 8 6l5 12M5 14h6M15 18l3.5-8 3.5 8M16.3 15.5h4.4"/></svg>Text</button>
+          <button id="rd-btn-open" type="button" class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>Open</button>
+          <button id="rd-btn-close" type="button" class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>Close</button>
         </div>
-        <p id="entry-note" class="note" hidden></p>
-        <div id="entry-view" class="entry-view"></div>
-        <details id="raw-wrap" class="raw">
-          <summary>Raw entry source</summary>
-          <pre id="raw-source"></pre>
-        </details>
+        <ul id="suggest" class="suggest" hidden></ul>
+        <div id="import-row" class="import-row">
+          <button id="btn-open-doc" type="button" class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>Open a book or text file</button>
+          <button id="btn-paste-doc" type="button" class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="5" width="12" height="16" rx="2"/><path d="M9 5V4h6v1M9 11h6M9 15h4"/></svg>Paste text</button>
+        </div>
+        <input id="file-doc" type="file" hidden>
+      </div>
+
+      <div id="reader" class="reader" hidden>
+        <div id="rd-view" class="rd-view" aria-label="Book text"><div id="rd-flow" class="rd-flow"></div></div>
+        <div class="rd-foot"><span id="rd-prog" class="rd-prog"></span><span id="rd-title"></span><span id="rd-pos"></span></div>
+      </div>
+
+      <div id="dict-pane" class="dict-pane">
+        <div id="sheet-grip" class="sheet-grip">
+          <span class="grip-bar"></span>
+          <button id="sheet-hide" type="button" aria-label="Hide dictionary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+        </div>
+        <div class="sheet-body">
+          <div id="empty-state" class="empty" hidden>
+            <p id="empty-msg"></p>
+            <label class="btn primary file-btn">Choose a dictionary file (.mdx)
+              <input id="file-dict-empty" type="file" hidden>
+            </label>
+          </div>
+
+          <div id="lookup-hint" class="hint" hidden>Type a word above. Tap a paragraph of a definition to pick it, or long-press to select your own text, then add it to your notebook.</div>
+
+          <div id="entry-wrap" hidden>
+            <div class="entry-head">
+              <h2 id="entry-word"></h2>
+              <button id="btn-add-word" type="button" class="primary small">＋ Add to notebook</button>
+            </div>
+            <p id="entry-note" class="note" hidden></p>
+            <div id="entry-view" class="entry-view"></div>
+            <details id="raw-wrap" class="raw">
+              <summary>Raw entry source</summary>
+              <pre id="raw-source"></pre>
+            </details>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -212,6 +234,19 @@
     </form>
   </dialog>
 
+  <!-- reader: contents and text settings -->
+  <dialog id="toc-dialog" aria-labelledby="toc-title">
+    <h3 id="toc-title">Contents</h3>
+    <ul id="toc-list" class="toc"></ul>
+    <div class="dialog-actions"><span class="spacer"></span><button id="toc-close" type="button">Close</button></div>
+  </dialog>
+  <dialog id="prefs-dialog" aria-labelledby="pf-title">
+    <h3 id="pf-title">Reading text</h3>
+    <div class="pref-row"><span>Text size</span><span class="seg"><button id="pf-smaller" type="button" aria-label="Smaller text">A−</button><button id="pf-bigger" type="button" aria-label="Larger text">A+</button></span></div>
+    <div class="pref-row"><span>Typeface</span><span class="seg"><button type="button" data-face="serif">Serif</button><button type="button" data-face="sans">Sans</button></span></div>
+    <div class="dialog-actions"><span class="spacer"></span><button id="pf-close" type="button" class="primary">Done</button></div>
+  </dialog>
+
   <!-- first-run tutorial (also opened from Settings) -->
   <dialog id="tour-dialog" aria-labelledby="tour-title">
     <h3 id="tour-title"></h3>
@@ -235,10 +270,13 @@
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <script src="js/config.js"></script>
+  <script src="js/zip.js"></script>
+  <script src="js/docs.js"></script>
   <script src="js/leitner.js"></script>
   <script src="js/mdict.js"></script>
   <script src="js/store.js"></script>
   <script src="js/render.js"></script>
+  <script src="js/reader.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

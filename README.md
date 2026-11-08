@@ -30,9 +30,20 @@ Anki schedules by itself. The JSON keeps the real progress.
 ## Quick lookup from other apps (Android)
 After the app is installed ("Add to Home screen" / "Install app"), select a word or sentence in any
 app, tap **Share**, and choose Dictionary Notebook. One to three words are looked up at once; a longer
-sentence is shown as tappable words and becomes the context of the cards you add.
+text opens in the reader (below).
 A web app cannot add itself to the Copy / Web search row of the selection menu: that needs a native
 Android app (the "Process text" action), which the later Android version can provide.
+
+## Reader
+Tap **Open a book or text file** (between the search field and the entry) to read an **EPUB, DOCX,
+Markdown, HTML or plain text** file, or share longer text from another app. It fills the home page and is
+paginated; headings, bold/italic, lists, quotes and tables are kept. Your place, text size and font are remembered.
+- Swipe sideways or tap the empty page edges to turn pages. Swipe down to show the search field
+  (with Contents, Text size, Open and Close); swipe up or tap the page to hide it.
+- Tap a word: its definition rises from the bottom. Drag the handle to resize the panel, or press the
+  arrow to hide it. "Add to notebook" fills the context with the sentence around the word.
+- Not supported: images, footnotes, DRM-protected EPUBs, PDF, ODT, DOC, DOCX numbering styles. Files up to 40 MB.
+- Word tapping needs a current Chrome/Edge (Android). The book is stored in the browser, one at a time.
 
 ## Limits
 - Supported: MDX v1/v2, zlib, LZO or stored blocks, UTF-8/UTF-16/GBK/Big5, key-index encryption.

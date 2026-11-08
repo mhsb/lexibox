@@ -28,7 +28,8 @@
     pick: null,           // { mode: 'chunks', start, end } | { mode: 'text', text }
     cardCtx: null,        // { entry } while the card dialog is open
     session: null,        // review session
-    sharedContext: ''     // sentence shared from another app; becomes the context of new cards
+    context: '',          // sentence around the word tapped in the reader; prefilled as the context of new cards
+    doc: null             // the document open in the reader
   };
 
   /* ================================================================ small UI helpers */
@@ -87,7 +88,9 @@
     state.tab = name;
     Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (s) { s.classList.toggle('active', s.id === 'tab-' + name); });
     Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (b) { b.classList.toggle('active', b.getAttribute('data-tab') === name); });
+    syncReading();
     renderBar();
+    if (name === 'lookup') Reader.relayout();
     if (name === 'notebook') renderNotebook();
     if (name === 'review') renderReview();
     if (name === 'settings') renderSettings();
@@ -232,13 +235,20 @@
     var list = state.dict.suggest(q, 12);
     list.forEach(function (s) {
       var li = el('li', null, s.key);
-      li.addEventListener('click', function () { $('q').value = s.key; lookupWord(s.key); });
+      li.addEventListener('click', function () { $('q').value = s.key; Reader.closeDrawer(); lookupWord(s.key, ''); });
       ul.appendChild(li);
     });
     ul.hidden = list.length === 0;
   }
 
-  async function lookupWord(raw) {
+  // ctx: the sentence the word came from (undefined keeps the current one, '' clears it)
+  async function lookupWord(raw, ctx) {
+    if (ctx !== undefined) state.context = ctx;
+    await findWord(raw);
+    if (document.body.classList.contains('reading')) Reader.showSheet();
+  }
+
+  async function findWord(raw) {
     if (!state.dict) return;
     var w = String(raw || '').replace(/[‘’]/g, "'").trim();
     if (!w) return;
@@ -291,6 +301,8 @@
     restart($('entry-wrap'), 'enter');
     $('lookup-hint').hidden = true;
     $('main').scrollTop = 0;
+    var sb = document.querySelector('.sheet-body');
+    if (sb) sb.scrollTop = 0;
   }
 
   /* ================================================================ selection (paragraphs or free text) */
@@ -304,8 +316,9 @@
 
   function renderBar() {
     var bar = $('actionbar'), p = state.pick;
-    if (!p || state.tab !== 'lookup') { bar.hidden = true; return; }
+    if (!p || state.tab !== 'lookup') { bar.hidden = true; document.body.classList.remove('has-bar'); return; }
     bar.hidden = false;
+    document.body.classList.add('has-bar');
     var prev = $('ab-prev'), next = $('ab-next');
     if (p.mode === 'chunks') {
       var n = p.end - p.start + 1;
@@ -386,7 +399,7 @@
     $('cd-title').textContent = ent ? 'Edit card' : 'Add to notebook';
     $('cd-word').value = ent ? ent.word : (opts.word || '');
     $('cd-def').value = ent ? ent.definition : (opts.definition || '');
-    $('cd-ctx').value = ent ? ent.context : state.sharedContext;
+    $('cd-ctx').value = ent ? ent.context : state.context;
     $('cd-delete').hidden = $('cd-reset').hidden = !ent;
     var meta = $('cd-meta');
     meta.hidden = !ent;
@@ -717,7 +730,7 @@
     });
 
     // lookup
-    $('search-form').addEventListener('submit', function (e) { e.preventDefault(); lookupWord($('q').value); $('q').blur(); });
+    $('search-form').addEventListener('submit', function (e) { e.preventDefault(); var w = $('q').value; Reader.closeDrawer(); lookupWord(w, ''); $('q').blur(); });
     $('q').addEventListener('input', function () { clearTimeout(suggestTimer); suggestTimer = setTimeout(updateSuggestions, 60); });
     $('q').addEventListener('focus', function () { if ($('q').value.trim()) updateSuggestions(); });
     $('file-dict-empty').addEventListener('change', function () { chooseDictionaryFile(this); });
@@ -821,7 +834,11 @@
     { title: 'Look up a word', html:
       '<p>Type in the search box, then tap a suggestion or press <b>Go</b>.</p>' +
       '<p>Word forms such as <i>ran</i> or <i>running</i> find their base word. Tap a linked word inside a definition to jump to it.</p>' +
-      '<p>In any other app, select a word or a sentence, tap <b>Share</b> and choose Dictionary Notebook (once the app is installed). A sentence becomes the context for the cards you add.</p>' },
+      '<p>In any other app, select a word, tap <b>Share</b> and choose Dictionary Notebook (once the app is installed).</p>' },
+    { title: 'Read anything', html:
+      '<p>Tap <b>Import</b> to open an EPUB, DOCX, Markdown, HTML or plain text file. Longer text shared from another app opens here too.</p>' +
+      '<p>Swipe sideways or tap the page edges to turn pages. <b>Tap a word</b> to open its definition from the bottom; drag the handle to resize the panel, or press Hide.</p>' +
+      '<p>Swipe down to show the search box. The sentence around the word is filled in as the context of the card you add.</p>' },
     { title: 'Pick what to remember', html:
       '<p>Tap a paragraph of the definition to highlight it. <b>+ ¶</b> adds the next paragraph, <b>− ¶</b> takes one back.</p>' +
       '<div class="tour-entry"><div class="picked">1. to move quickly on foot</div><div class="picked">2. to manage or operate a business</div><div>3. to flow, as water does</div></div>' +
@@ -865,47 +882,89 @@
       Store.setKV('tourSeen', true).catch(function () { /* not fatal */ });
     });
     $('btn-tour').addEventListener('click', openTour);
-    $('ctx-clear').addEventListener('click', function () { state.sharedContext = ''; renderSharedBar(); });
   }
 
-  /* ================================================================ text shared from other apps */
+  /* ================================================================ reader: opening books and shared text */
 
-  var WORD_EDGES = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
-
-  function renderSharedBar() {
-    var bar = $('ctx-bar'), box = $('ctx-words');
-    box.textContent = '';
-    bar.hidden = !state.sharedContext;
-    if (!state.sharedContext) return;
-    state.sharedContext.split(/\s+/).forEach(function (tok) {
-      var word = tok.replace(WORD_EDGES, '');
-      if (!word) { box.appendChild(document.createTextNode(tok + ' ')); return; }
-      var b = el('button', 'ctx-w', tok);
-      b.type = 'button';
-      b.addEventListener('click', function () {
-        Array.prototype.forEach.call(box.querySelectorAll('.ctx-w.on'), function (x) { x.classList.remove('on'); });
-        b.classList.add('on');
-        $('q').value = word;
-        lookupWord(word);
-      });
-      box.appendChild(b);
-    });
+  function syncReading() {
+    document.body.classList.toggle('reading', !!state.doc && state.tab === 'lookup');
   }
 
-  // A shared word is looked up at once; a longer text is kept as the context sentence.
-  function handleShared(text) {
-    var t = String(text || '').replace(/\s+/g, ' ').replace(/^["“”'‘’]+|["“”'‘’]+$/g, '').trim();
-    if (!t) return;
-    if (t.split(' ').length <= 3) {
-      state.sharedContext = '';
-      renderSharedBar();
-      $('q').value = t;
-      lookupWord(t);
-    } else {
-      state.sharedContext = t.slice(0, 600);
-      renderSharedBar();
-      showTab('lookup');
+  function setTopbarVar() {
+    var tb = document.querySelector('.topbar');
+    if (tb) document.documentElement.style.setProperty('--topbar-h', tb.offsetHeight + 'px');
+  }
+
+  async function startReading(doc, pos) {
+    state.doc = doc;
+    state.context = '';
+    try {
+      await Store.setKV('doc', doc);
+      await Store.setKV('docPos', pos || { s: 0, b: 0 });
+    } catch (e) { toast('The book could not be saved for next time: ' + e.message, 5000, true); }
+    showTab('lookup');
+    Reader.load(doc, pos);
+  }
+
+  async function openDocFile(file) {
+    if (!file) return;
+    showProgress('Opening book', file.name, null);
+    var doc = null, err = null;
+    try { doc = await Docs.open(file); } catch (e) { err = e; }
+    hideProgress();
+    if (err) { toast(err.message || 'This file could not be opened.', 6000, true); return; }
+    await startReading(doc);
+  }
+
+  async function pasteText() {
+    try {
+      var t = await navigator.clipboard.readText();
+      if (!t || !t.trim()) { toast('The clipboard is empty.'); return; }
+      await startReading(Docs.fromText(t, 'Pasted text'));
+    } catch (e) {
+      toast(e && e.name === 'NotAllowedError' ? 'Clipboard access was blocked. Share the text to this app instead.' : (e.message || 'Could not read the clipboard.'), 5000, true);
     }
+  }
+
+  async function closeBook() {
+    if (!state.doc) return;
+    if (!window.confirm('Close “' + state.doc.title + '”? Your reading position will be forgotten.')) return;
+    Reader.close();
+    state.doc = null;
+    state.context = '';
+    try { await Store.setKV('doc', null); await Store.setKV('docPos', null); } catch (e) { /* not fatal */ }
+    syncReading();
+  }
+
+  // One to three shared words are looked up; anything longer opens as text in the reader.
+  async function handleShared(text, title) {
+    var t = String(text || '').trim();
+    if (!t) return;
+    var flat = t.replace(/\s+/g, ' ').replace(/^["“”'‘’]+|["“”'‘’]+$/g, '').trim();
+    if (flat.split(' ').length <= 3) {
+      $('q').value = flat;
+      await lookupWord(flat, '');
+      return;
+    }
+    try {
+      var name = title && title.trim() && title.trim() !== flat ? title.trim() : 'Shared text';
+      await startReading(Docs.fromText(t, name));
+    } catch (e) { toast(e.message, 5000, true); }
+  }
+
+  function bindReader() {
+    Reader.init({
+      onWord: function (word, sentence) { lookupWord(word, sentence); },
+      onPosition: function (pos) { Store.setKV('docPos', pos).catch(function () { /* not fatal */ }); },
+      onPrefs: function (p) { Store.setKV('readerPrefs', p).catch(function () { /* not fatal */ }); }
+    });
+    $('btn-open-doc').addEventListener('click', function () { $('file-doc').click(); });
+    $('rd-btn-open').addEventListener('click', function () { Reader.closeDrawer(); $('file-doc').click(); });
+    $('file-doc').addEventListener('change', function () { var f = this.files && this.files[0]; this.value = ''; openDocFile(f); });
+    $('btn-paste-doc').addEventListener('click', pasteText);
+    $('rd-btn-close').addEventListener('click', function () { Reader.closeDrawer(); closeBook(); });
+    window.addEventListener('resize', setTopbarVar);
+    setTopbarVar();
   }
 
   /* ================================================================ boot */
@@ -913,6 +972,7 @@
   async function boot() {
     bindUI();
     bindTour();
+    bindReader();
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () { /* offline install is optional */ });
     var st = await Store.init();
     if (st.volatile) $('storage-warning').hidden = false;
@@ -924,10 +984,19 @@
     renderBadges();
     Store.requestPersist();
     await loadDictionary();
+    try {
+      Reader.setPrefs(await Store.getKV('readerPrefs'));
+      var saved = await Store.getKV('doc');
+      if (saved && saved.sections && saved.sections.length) {
+        state.doc = saved;
+        syncReading();
+        Reader.load(saved, await Store.getKV('docPos'));
+      }
+    } catch (e) { /* the saved book is optional */ }
     var params = new URLSearchParams(location.search);
-    var q = params.get('q'), shared = params.get('text') || params.get('title');
-    if (q && state.dict) { $('q').value = q; lookupWord(q); }
-    else if (shared) handleShared(shared);
+    var q = params.get('q'), shared = params.get('text');
+    if (q && state.dict) { $('q').value = q; lookupWord(q, ''); }
+    else if (shared) await handleShared(shared, params.get('title'));
     if (q || shared) { try { history.replaceState(null, '', location.pathname); } catch (e) { /* ignore */ } }
     var seen = false;
     try { seen = !!(await Store.getKV('tourSeen')); } catch (e) { /* show it */ }
