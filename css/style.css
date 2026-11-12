@@ -442,3 +442,11 @@ body.sheet-open .coach { bottom: auto; top: calc(var(--topbar-h, 56px) + 8px); }
 body[data-coach="grip"] #sheet-grip .grip-bar { animation: coach-glow 1.3s ease-out infinite; }
 body[data-coach="add"] #btn-add-word, body[data-coach="drawer"] .rd-pull { animation: coach-glow 1.3s ease-out infinite; }
 @media (prefers-reduced-motion: reduce) { body.reading .rd-pull, .coach, body[data-coach] * { animation: none !important; } }
+
+#open-dialog .wide { width: 100%; margin: 6px 0 14px; }
+#open-dialog textarea { width: 100%; min-height: 120px; resize: vertical; }
+
+/* ---------- dictionary media (.mdd) ---------- */
+.entry-view img.dict-img { max-width: 100%; height: auto; vertical-align: middle; border-radius: 6px; }
+.entry-view a.dict-sound { display: inline-block; cursor: pointer; vertical-align: middle; color: var(--accent); margin: 0 .2em; }
+.entry-view a.dict-sound:empty::before { content: "\25B6"; display: inline-grid; place-items: center; width: 1.5em; height: 1.5em; border-radius: 50%; background: var(--accent-soft); font-size: .72em; }

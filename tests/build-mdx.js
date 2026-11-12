@@ -31,12 +31,14 @@ function packBlock(data, type) {
  * entries: [{ key, text }]
  * opts: version (2|1.2), encoding ('utf-8'|'utf-16le'), compress ('zlib'|'none'),
  *       encryptInfo (bool, version 2 only), keysPerBlock, recBlockSize, title, extraHeader
+ *       mdd (bool): build a resource file; entries are { key: 'path', data: Buffer } and keys are UTF-16
  */
 function buildMdx(entries, opts) {
   opts = opts || {};
   const version = opts.version || 2;
   const v2 = version >= 2;
-  const encoding = opts.encoding || 'utf-8';
+  const mdd = !!opts.mdd;
+  const encoding = mdd ? 'utf-16le' : (opts.encoding || 'utf-8');
   const compress = opts.compress || 'zlib';
   const unit = encoding === 'utf-16le' ? 2 : 1;
   const keysPerBlock = opts.keysPerBlock || 3;
@@ -51,7 +53,7 @@ function buildMdx(entries, opts) {
   });
 
   // records
-  const recs = sorted.map((e) => Buffer.concat([enc(e.text), Buffer.alloc(unit)]));
+  const recs = sorted.map((e) => (mdd ? Buffer.from(e.data) : Buffer.concat([enc(e.text), Buffer.alloc(unit)])));
   const offsets = [];
   let off = 0;
   for (const r of recs) { offsets.push(off); off += r.length; }
@@ -104,10 +106,10 @@ function buildMdx(entries, opts) {
   const attrs = Object.assign({
     GeneratedByEngineVersion: v2 ? '2.0' : '1.2', RequiredEngineVersion: v2 ? '2.0' : '1.2',
     Encrypted: opts.encryptInfo ? '2' : '0',
-    Encoding: encoding === 'utf-16le' ? 'UTF-16' : 'UTF-8', Format: 'Html', KeyCaseSensitive: 'No',
+    Encoding: mdd ? '' : (encoding === 'utf-16le' ? 'UTF-16' : 'UTF-8'), Format: mdd ? '' : 'Html', KeyCaseSensitive: 'No',
     Title: opts.title || 'Test Dictionary', Description: 'Built for tests'
   }, opts.extraHeader || {});
-  const headerText = '<Dictionary ' + Object.entries(attrs).map(([k, v]) => k + '="' + String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '"').join(' ') + '/>\r\n\u0000';
+  const headerText = '<' + (mdd ? 'Library_Data' : 'Dictionary') + ' ' + Object.entries(attrs).map(([k, v]) => k + '="' + String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '"').join(' ') + '/>\r\n\u0000';
   const headerBuf = Buffer.from(headerText, 'utf16le');
   const headerLenAndData = Buffer.concat([u32be(headerBuf.length), headerBuf]);
   const headerAdler = Buffer.alloc(4); headerAdler.writeUInt32LE(adler32(headerBuf));
@@ -129,4 +131,6 @@ function buildMdx(entries, opts) {
   return Buffer.concat([headerLenAndData, headerAdler, keyHeader, infoOut, keysData, recHeader, recInfo, recData]);
 }
 
-module.exports = { buildMdx };
+const buildMdd = (files, opts) => buildMdx(files, Object.assign({}, opts, { mdd: true }));
+
+module.exports = { buildMdx, buildMdd };

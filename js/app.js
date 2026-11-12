@@ -29,7 +29,10 @@
     cardCtx: null,        // { entry } while the card dialog is open
     session: null,        // review session
     context: '',          // sentence around the word tapped in the reader; prefilled as the context of new cards
-    doc: null             // the document open in the reader
+    doc: null,            // the document open in the reader
+    media: [],            // stored .mdd records for the current dictionary
+    mediaReady: false,    // media were set up during this start already
+    dictStyle: true       // use the dictionary's own styling, images and sounds
   };
 
   /* ================================================================ small UI helpers */
@@ -147,6 +150,7 @@
     showProgress('Preparing dictionary', 'Starting...', 0);
     try {
       var dict = await MD.open(blob, { onProgress: progressCb('Preparing dictionary') });
+      if (dict.meta.isMdd) throw new Error('That is a resource (.mdd) file. Choose it together with the .mdx file, or use "Add media files".');
       var rec = {
         name: info.name, size: blob.size, source: info.source, bundledVersion: info.bundledVersion || null,
         sig: [info.source, info.bundledVersion || '', info.name, blob.size, info.lastModified || 0].join('|'), blob: blob
@@ -183,11 +187,80 @@
     return res.blob();
   }
 
+  /* ---- resource files (.mdd): styles, images, audio ---- */
+
+  function mediaRec(blob, info) {
+    return {
+      name: info.name, size: blob.size, source: info.source || 'custom', bundledVersion: info.bundledVersion || null,
+      sig: [info.source || 'custom', info.bundledVersion || '', info.name, blob.size, info.lastModified || 0].join('|'), blob: blob
+    };
+  }
+
+  // Parses (or reloads the saved index of) every record and returns the .mdd dictionaries.
+  async function openMediaRecs(recs) {
+    var saved = {};
+    try { saved = (await Store.getMediaIndex()) || {}; } catch (e) { saved = {}; }
+    var fresh = {}, dicts = [], dirty = false;
+    for (var i = 0; i < recs.length; i++) {
+      var rec = recs[i], d = null;
+      if (saved[rec.sig]) { try { d = MD.fromIndex(rec.blob, saved[rec.sig]); } catch (e) { d = null; } }
+      if (!d) {
+        showProgress('Preparing media', rec.name, 0);
+        try { d = await MD.open(rec.blob, { onProgress: progressCb('Preparing media') }); } finally { hideProgress(); }
+        dirty = true;
+      }
+      if (!d.meta.isMdd) throw new Error(rec.name + ' is not an .mdd resource file.');
+      fresh[rec.sig] = d.exportIndex();
+      dicts.push(d);
+    }
+    if (dirty || Object.keys(saved).length !== recs.length) { try { await Store.putMediaIndex(fresh); } catch (e) { /* not fatal */ } }
+    return dicts;
+  }
+
+  async function setMedia(recs, dicts) {
+    state.media = recs;
+    state.mediaReady = true;
+    Media.set(dicts);
+    renderSettings();
+  }
+
+  async function loadStoredMedia() {
+    var recs = [];
+    try { recs = (await Store.getMedia()) || []; } catch (e) { recs = []; }
+    if (!recs.length) { await setMedia([], []); return; }
+    try { await setMedia(recs, await openMediaRecs(recs)); }
+    catch (e) { toast('Media files could not be opened: ' + (e && e.message ? e.message : e), 6000, true); await setMedia([], []); }
+  }
+
+  // files: [{ blob, name, lastModified, source, bundledVersion }]. replace=true drops the media of the old dictionary.
+  async function installMedia(files, replace) {
+    var recs = files.map(function (f) { return mediaRec(f.blob, f); });
+    var keep = replace ? [] : state.media.filter(function (r) { return !recs.some(function (n) { return n.name === r.name; }); });
+    var all = keep.concat(recs);
+    var dicts = await openMediaRecs(all);            // also checks that they are .mdd files
+    try { await Store.putMedia(all); } catch (e) { toast('The media files work now but could not be saved on this device.', 6000, true); }
+    await setMedia(all, dicts);
+  }
+
+  async function clearMedia() {
+    try { await Store.putMedia([]); await Store.putMediaIndex({}); } catch (e) { /* not fatal */ }
+    await setMedia([], []);
+  }
+
   async function installBundled() {
     var blob = await fetchBundled();
     await installDictionary(blob, {
       name: CONFIG.BUNDLED_DICT.split('/').pop(), source: 'bundled', bundledVersion: CONFIG.BUNDLED_DICT_VERSION
     });
+    var list = CONFIG.BUNDLED_MEDIA || [], files = [];
+    try {
+      for (var i = 0; i < list.length; i++) {
+        var res = await fetch(list[i], { cache: 'no-cache' });
+        if (!res.ok) throw new Error('The bundled media file ' + list[i] + ' was not found (' + res.status + ').');
+        files.push({ blob: await res.blob(), name: list[i].split('/').pop(), source: 'bundled', bundledVersion: CONFIG.BUNDLED_DICT_VERSION });
+      }
+      if (files.length) await installMedia(files, true); else await clearMedia();
+    } catch (e) { toast('Dictionary ready, but its media could not be loaded: ' + (e && e.message ? e.message : e), 6000, true); await clearMedia(); }
   }
 
   async function loadDictionary() {
@@ -203,7 +276,7 @@
           if (!rec) throw e;          // offline with an older copy: keep using it
         }
       }
-      if (rec) { await openStoredDictionary(rec); return; }
+      if (rec) { await openStoredDictionary(rec); await loadStoredMedia(); return; }
       setNoDict(CONFIG.BUNDLED_DICT ? '' : 'Choose a dictionary file to get started.');
     } catch (e) {
       hideProgress();
@@ -212,17 +285,42 @@
   }
 
   async function chooseDictionaryFile(input) {
-    var file = input.files && input.files[0];
+    var files = Array.prototype.slice.call(input.files || []);
     input.value = '';
-    if (!file) return;
-    if (/\.mdd$/i.test(file.name)) { toast('That is an .mdd resource file. Please choose the .mdx file.', 5000, true); return; }
-    try {
-      await installDictionary(file, { name: file.name, source: 'custom', lastModified: file.lastModified });
-      toast('Dictionary ready: ' + dictName());
+    if (!files.length) return;
+    var mdds = files.filter(function (f) { return /\.mdd$/i.test(f.name); });
+    var mdx = files.filter(function (f) { return !/\.mdd$/i.test(f.name); });
+    if (mdx.length > 1) { toast('Choose one .mdx file at a time (you can select several .mdd files with it).', 6000, true); return; }
+    function asMedia(list) { return list.map(function (f) { return { blob: f, name: f.name, lastModified: f.lastModified }; }); }
+    if (mdx.length) {
+      try {
+        await installDictionary(mdx[0], { name: mdx[0].name, source: 'custom', lastModified: mdx[0].lastModified });
+      } catch (e) {
+        toast('Could not open this file: ' + (e && e.message ? e.message : e), 7000, true);
+        return;
+      }
+      try {
+        if (mdds.length) await installMedia(asMedia(mdds), true); else await clearMedia();
+      } catch (e) { toast('The dictionary is ready, but a media file could not be used: ' + (e && e.message ? e.message : e), 7000, true); await clearMedia(); }
+      toast('Dictionary ready: ' + dictName() + (state.media.length ? ' with ' + state.media.length + ' media file' + (state.media.length > 1 ? 's' : '') : ''));
       showTab('lookup');
-    } catch (e) {
-      toast('Could not open this file: ' + (e && e.message ? e.message : e), 7000, true);
-    }
+    } else await addMediaFiles(mdds);
+  }
+
+  async function addMediaFiles(list) {
+    if (!list.length) return;
+    var bad = list.filter(function (f) { return !/\.mdd$/i.test(f.name); });
+    if (bad.length) { toast('Media files end in .mdd. Skipped: ' + bad[0].name, 5000, true); list = list.filter(function (f) { return /\.mdd$/i.test(f.name); }); if (!list.length) return; }
+    try {
+      await installMedia(list.map(function (f) { return { blob: f, name: f.name, lastModified: f.lastModified }; }), false);
+      toast('Media ready: ' + state.media.length + ' file' + (state.media.length > 1 ? 's' : ''));
+      refreshEntry();
+    } catch (e) { toast('Could not use this file: ' + (e && e.message ? e.message : e), 7000, true); }
+  }
+
+  // Draw the current entry again (after media or the styling setting changed).
+  function refreshEntry() {
+    if (state.current) showEntries(state.current.indexes, $('entry-note').textContent);
   }
 
   /* ================================================================ lookup */
@@ -284,10 +382,13 @@
       toast('Could not read this entry: ' + (e && e.message ? e.message : e), 6000, true);
       return;
     }
-    var built = Render.build(htmls);
+    var styled = state.dictStyle;
+    var built = Render.build(htmls, { styled: styled, has: Media.has });
+    if (styled) { try { await Media.applyStyles(built.styles); } catch (e) { /* plain entry */ } }
     var view = $('entry-view');
     view.textContent = '';
     view.appendChild(built.node);
+    if (styled) Media.resolveImages(built.node);
     state.current = { key: state.dict.keys[idxs[0]], indexes: idxs };
     state.chunkEls = Array.prototype.slice.call(view.querySelectorAll('.chunk'));
     clearPick();
@@ -695,7 +796,10 @@
       row('Format', 'MDX ' + m.version + ', ' + m.encoding);
       row('File', (r.name || '') + (r.size ? ' (' + (r.size / 1048576).toFixed(1) + ' MB)' : ''));
       row('Source', r.source === 'bundled' ? 'bundled with the app' : 'chosen by you');
+      row('Media', state.media.length ? state.media.map(function (m) { return m.name; }).join(', ') : 'none');
     } else row('Status', 'No dictionary loaded');
+    $('btn-clear-media').hidden = !state.media.length;
+    $('set-dict-style').checked = state.dictStyle;
     $('btn-bundled').hidden = !CONFIG.BUNDLED_DICT;
     Store.isPersisted().then(function (p) {
       $('storage-info').textContent = 'App version ' + APP_VERSION + '. ' + (Store.isVolatile()
@@ -734,6 +838,15 @@
     $('q').addEventListener('input', function () { clearTimeout(suggestTimer); suggestTimer = setTimeout(updateSuggestions, 60); });
     $('q').addEventListener('focus', function () { if ($('q').value.trim()) updateSuggestions(); });
     $('file-dict-empty').addEventListener('change', function () { chooseDictionaryFile(this); });
+
+    // pronunciation buttons from the .mdd: play instead of picking the paragraph
+    $('entry-view').addEventListener('click', function (e) {
+      var snd = e.target.closest && e.target.closest('.dict-sound');
+      if (!snd) return;
+      e.preventDefault();
+      e.stopPropagation();
+      Media.play(snd.getAttribute('data-sound')).then(function (ok) { if (!ok) toast('This sound could not be played.'); });
+    }, true);
 
     $('entry-view').addEventListener('click', function (e) {
       var link = e.target.closest ? e.target.closest('a.dict-link') : null;
@@ -794,6 +907,14 @@
 
     // settings
     $('file-dict').addEventListener('change', function () { chooseDictionaryFile(this); });
+    $('file-media').addEventListener('change', function () { var l = Array.prototype.slice.call(this.files || []); this.value = ''; addMediaFiles(l); });
+    $('btn-clear-media').addEventListener('click', async function () { await clearMedia(); toast('Media files removed.'); refreshEntry(); });
+    $('set-dict-style').addEventListener('change', function () {
+      state.dictStyle = this.checked;
+      Store.setKV('dictStyle', state.dictStyle).catch(function () { /* not fatal */ });
+      Media.reset();
+      refreshEntry();
+    });
     $('btn-bundled').addEventListener('click', async function () {
       try { await installBundled(); toast('Bundled dictionary loaded.'); showTab('lookup'); }
       catch (e) { hideProgress(); toast('Could not load the bundled dictionary: ' + e.message, 6000, true); }
@@ -836,7 +957,7 @@
       '<p>Word forms such as <i>ran</i> or <i>running</i> find their base word. Tap a linked word inside a definition to jump to it.</p>' +
       '<p>In any other app, select a word, tap <b>Share</b> and choose Dictionary Notebook (once the app is installed).</p>' },
     { title: 'Read anything', html:
-      '<p>Tap <b>Import</b> to open an EPUB, DOCX, Markdown, HTML or plain text file. Longer text shared from another app opens here too.</p>' +
+      '<p>Tap <b>Open or paste text</b> to read an EPUB, DOCX, Markdown, HTML or plain text file, or text you pasted. Longer text shared from another app opens here too.</p>' +
       '<p>Swipe sideways or tap the page edges to turn pages. <b>Tap a word</b> to open its definition from the bottom; drag the handle to resize the panel, or press Hide.</p>' +
       '<p>Swipe down to show the search box. The sentence around the word is filled in as the context of the card you add.</p>' },
     { title: 'Pick what to remember', html:
@@ -916,19 +1037,34 @@
     await startReading(doc);
   }
 
-  async function pasteText() {
+  function openOpenDialog() {
+    Reader.closeDrawer();
+    $('od-text').value = '';
+    $('od-read').disabled = true;
+    $('open-dialog').showModal();
+  }
+
+  async function readPasted() {
+    var t = $('od-text').value;
+    if (!t.trim()) return;
+    $('open-dialog').close();
+    try { await startReading(Docs.fromText(t, 'Pasted text')); } catch (e) { toast(e.message, 5000, true); }
+  }
+
+  async function pasteFromClipboard() {
     try {
       var t = await navigator.clipboard.readText();
       if (!t || !t.trim()) { toast('The clipboard is empty.'); return; }
-      await startReading(Docs.fromText(t, 'Pasted text'));
+      $('od-text').value = t;
+      $('od-read').disabled = false;
     } catch (e) {
-      toast(e && e.name === 'NotAllowedError' ? 'Clipboard access was blocked. Share the text to this app instead.' : (e.message || 'Could not read the clipboard.'), 5000, true);
+      toast('Clipboard access was blocked. Long-press in the box and choose Paste instead.', 5000, true);
     }
   }
 
   async function closeBook() {
     if (!state.doc) return;
-    if (!window.confirm('Close “' + state.doc.title + '”? Your reading position will be forgotten.')) return;
+    if (!window.confirm('Clear “' + state.doc.title + '” from the reader? Your reading position will be forgotten.')) return;
     Reader.close();
     if (coach.on) coachStop();
     state.doc = null;
@@ -977,7 +1113,7 @@
     { ev: 'dialog', text: 'Tap “Add to notebook”. The sentence you tapped is saved as the card’s context. You can Cancel if you don’t want this card.', tag: 'add' },
     { ev: 'drawer', text: 'Need another word? Swipe down, or tap the tab at the top, to show the search box and options.', tag: 'drawer', hideSheet: true },
     { ev: 'page', text: 'Swipe sideways, or tap the empty edges of the page, to turn it.', startPos: true },
-    { ev: null, text: 'That’s it! Use Open in the search panel to read your own book, or Paste text to read something you copied.', last: true }
+    { ev: null, text: 'That’s it! Use Open in the search panel to read your own file or pasted text, and Clear to empty the reader.', last: true }
   ];
   var coach = { on: false, step: 0, pos: null, timer: 0 };
 
@@ -1033,10 +1169,14 @@
       onPosition: function (pos) { Store.setKV('docPos', pos).catch(function () { /* not fatal */ }); coachEvent('page', pos); },
       onPrefs: function (p) { Store.setKV('readerPrefs', p).catch(function () { /* not fatal */ }); }
     });
-    $('btn-open-doc').addEventListener('click', function () { $('file-doc').click(); });
-    $('rd-btn-open').addEventListener('click', function () { Reader.closeDrawer(); $('file-doc').click(); });
-    $('file-doc').addEventListener('change', function () { var f = this.files && this.files[0]; this.value = ''; openDocFile(f); });
-    $('btn-paste-doc').addEventListener('click', pasteText);
+    $('btn-open-doc').addEventListener('click', openOpenDialog);
+    $('rd-btn-open').addEventListener('click', openOpenDialog);
+    $('od-file').addEventListener('click', function () { $('file-doc').click(); });
+    $('od-text').addEventListener('input', function () { $('od-read').disabled = !this.value.trim(); });
+    $('od-read').addEventListener('click', readPasted);
+    $('od-paste').addEventListener('click', pasteFromClipboard);
+    $('od-cancel').addEventListener('click', function () { $('open-dialog').close(); });
+    $('file-doc').addEventListener('change', function () { var f = this.files && this.files[0]; this.value = ''; if ($('open-dialog').open) $('open-dialog').close(); openDocFile(f); });
     $('rd-btn-close').addEventListener('click', function () { Reader.closeDrawer(); closeBook(); });
     $('btn-demo').addEventListener('click', startDemo);
     $('coach-next').addEventListener('click', function () { coachNext(); });
@@ -1059,6 +1199,7 @@
     try {
       state.settings = L.normalizeSettings(await Store.getKV('settings'));
       state.lastBackup = (await Store.getKV('lastBackup')) || null;
+      state.dictStyle = (await Store.getKV('dictStyle')) !== false;
       state.entries = await Store.getEntries();
     } catch (e) { toast('Could not read your saved notebook: ' + e.message, 7000, true); }
     renderBadges();

@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
 const MDict = require('../js/mdict.js');
-const { buildMdx } = require('./build-mdx.js');
+const { buildMdx, buildMdd } = require('./build-mdx.js');
 const { ripemd128, lzoDecompress } = MDict._internals;
 
 let passed = 0, failed = 0;
@@ -163,15 +163,38 @@ function makeEntries(n) {
     assert.strictEqual(d.suggest('word0123', 50).length, 10);
   });
 
+  console.log('Resource files (.mdd)');
+  await test('an .mdd opens, is flagged, and returns exact bytes for each path', async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 255, 254, 0, 0, 7]);   // binary, with NULs
+    const files = [
+      { key: '\\img\\logo.png', data: png },
+      { key: '\\style.css', data: Buffer.from('.hw{color:red}') },
+      { key: '\\snd\\é.wav', data: Buffer.alloc(3000, 7) }
+    ];
+    for (const opts of [{}, { version: 1.2 }, { compress: 'none', keysPerBlock: 2, recBlockSize: 1000 }]) {
+      const d = await MDict.open(blobOf(buildMdd(files, opts)));
+      assert.strictEqual(d.meta.isMdd, true);
+      assert.strictEqual(d.size(), 3);
+      for (const f of files) {
+        const i = d.keys.indexOf(f.key);
+        assert.ok(i >= 0, 'key ' + f.key);
+        assert.deepStrictEqual(Buffer.from(await d.readBytes(i)), f.data);
+      }
+    }
+  });
+  await test('an .mdx is not flagged as a resource file', async () => {
+    const d = await MDict.open(blobOf(buildMdx(makeEntries(3))));
+    assert.strictEqual(d.meta.isMdd, false);
+  });
+
   console.log('Error handling');
   await test('rejects non-MDX data with a friendly message', async () => {
     await assert.rejects(MDict.open(blobOf(Buffer.from('hello world, this is not a dictionary'))), /does not look like an MDX/);
     await assert.rejects(MDict.open(blobOf(Buffer.alloc(0))), /does not look like an MDX/);
   });
-  await test('rejects MDX v3, registration-locked and .mdd files', async () => {
+  await test('rejects MDX v3 and registration-locked files', async () => {
     await assert.rejects(MDict.open(blobOf(buildMdx(makeEntries(3), { extraHeader: { GeneratedByEngineVersion: '3.0' } }))), /not supported/);
     await assert.rejects(MDict.open(blobOf(buildMdx(makeEntries(3), { extraHeader: { Encrypted: '1' } }))), /registration code/);
-    await assert.rejects(MDict.open(blobOf(buildMdx(makeEntries(3), { extraHeader: { Library_Data: 'x.mdd' } }))), /\.mdd/);
   });
   await test('truncated file is reported, not crashed on', async () => {
     const buf = buildMdx(makeEntries(30), { keysPerBlock: 5 });

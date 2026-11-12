@@ -1,8 +1,10 @@
 /*!
  * render.js - turns a dictionary record (HTML) into safe DOM and marks its "chunks".
  *
- * Safety: scripts, styles, images, media, forms, event handlers and external links are dropped.
- * Only a small set of tags survives; only class (prefixed "d-"), lang and dir attributes are kept.
+ * Safety: scripts, forms, event handlers and external links are dropped. Only a small set of tags survives;
+ * class and id (prefixed "d-"), lang, dir and a short whitelist of style properties are kept.
+ * With opts.styled, the entry's stylesheets are collected (for Media.applyStyles) and images / sound links that
+ * exist in a loaded .mdd (opts.has) are kept as <img data-res> / <a class="dict-sound" data-sound>.
  * entry:// and bword:// links become in-app lookups (<a class="dict-link" data-word="...">).
  *
  * Chunks: the smallest block-level pieces that contain text (a list item, a paragraph, a cell...).
@@ -23,44 +25,92 @@
   function isBlock(n) { return n.nodeType === 1 && BLOCK[nameOf(n)] === 1; }
   function safeDecode(s) { try { return decodeURIComponent(s); } catch (e) { return s; } }
 
-  function copyAttrs(src, el) {
+  var STYLE_OK = set('color background background-color font-family font-size font-style font-weight font-variant text-decoration text-transform text-align text-indent letter-spacing line-height vertical-align white-space margin margin-top margin-bottom margin-left margin-right padding padding-top padding-bottom padding-left padding-right border border-top border-bottom border-left border-right border-radius display width max-width');
+  var COLOR_OK = /^(#[0-9a-f]{3,8}|[a-z]+|(rgb|hsl)a?\([\d\s.,%\/-]+\))$/i;
+
+  // Keeps only harmless declarations from an inline style attribute.
+  function safeStyle(css) {
+    var out = [];
+    String(css || '').split(';').forEach(function (d) {
+      var i = d.indexOf(':');
+      if (i < 0) return;
+      var name = d.slice(0, i).trim().toLowerCase(), val = d.slice(i + 1).replace(/!important/i, '').trim();
+      if (!STYLE_OK[name] || !val || /url\(|expression|javascript|\\/i.test(val)) return;
+      if (name === 'display' && !/^(inline|block|inline-block)$/i.test(val)) return;
+      out.push(name + ':' + val);
+    });
+    return out.join(';');
+  }
+
+  function copyAttrs(src, el, o) {
     var cls = src.getAttribute('class');
     if (cls) {
       var safe = cls.split(/\s+/).filter(Boolean).map(function (c) { return 'd-' + c.replace(/[^\w-]/g, ''); });
       if (safe.length) el.className = safe.join(' ');
     }
     ['lang', 'dir'].forEach(function (a) { if (src.hasAttribute(a)) el.setAttribute(a, src.getAttribute(a)); });
+    if (!o.styled) return;
+    var id = src.getAttribute('id');
+    if (id && /^[\w-]+$/.test(id)) el.setAttribute('id', 'd-' + id);
+    var st = safeStyle(src.getAttribute('style'));
+    if (nameOf(src) === 'FONT') {
+      var col = (src.getAttribute('color') || '').trim();
+      if (COLOR_OK.test(col)) st = 'color:' + col + (st ? ';' + st : '');
+    }
+    if (st) el.setAttribute('style', st);
   }
 
-  function copyInto(src, dest) {
+  function copyInto(src, dest, o) {
     for (var n = src.firstChild; n; n = n.nextSibling) {
       if (n.nodeType === 3) { dest.appendChild(document.createTextNode(n.nodeValue.replace(/\s+/g, ' '))); continue; }
       if (n.nodeType !== 1) continue;
       var tag = nameOf(n);
-      if (DROP[tag]) continue;
       var style = n.getAttribute('style');
       if (style && /display\s*:\s*none/i.test(style)) continue;
+      if (tag === 'IMG' && o.styled && o.has) {
+        var src = (n.getAttribute('src') || '').trim();
+        if (src && !/^[a-z][a-z0-9+.-]*:|^\/\//i.test(src) && o.has(src)) {
+          var im = document.createElement('img');
+          im.className = 'dict-img';
+          im.setAttribute('data-res', src);
+          im.setAttribute('alt', n.getAttribute('alt') || '');
+          dest.appendChild(im);
+        }
+        continue;
+      }
+      if (DROP[tag]) continue;
       if (tag === 'A') {
         var href = n.getAttribute('href') || '';
         var m = /^(?:entry|bword):\/\/(.+)$/i.exec(href);
+        var snd = /^sound:\/\/(.+)$/i.exec(href);
         if (m) {
           var a = document.createElement('a');
           a.className = 'dict-link';
           a.setAttribute('data-word', safeDecode(m[1]).replace(/#.*$/, '').trim());
-          copyInto(n, a);
+          copyInto(n, a, o);
           dest.appendChild(a);
-        } else if (!/^sound:/i.test(href)) {
-          copyInto(n, dest);              // ordinary link: keep the text, drop the link
-        }                                  // sound:// needs the .mdd file: drop it
+        } else if (snd) {
+          if (o.styled && o.has && o.has(snd[1])) {     // needs the .mdd file: dropped without it
+            var sa = document.createElement('a');
+            sa.className = 'dict-sound';
+            sa.setAttribute('data-sound', snd[1]);
+            sa.setAttribute('role', 'button');
+            sa.setAttribute('aria-label', 'Play sound');
+            copyInto(n, sa, o);
+            dest.appendChild(sa);
+          }
+        } else {
+          copyInto(n, dest, o);           // ordinary link: keep the text, drop the link
+        }
         continue;
       }
       if (BLOCK[tag] || INLINE[tag]) {
         var el = document.createElement(tag.toLowerCase());
-        copyAttrs(n, el);
-        copyInto(n, el);
+        copyAttrs(n, el, o);
+        copyInto(n, el, o);
         dest.appendChild(el);
       } else {
-        copyInto(n, dest);                // unknown tag: keep its content, drop the tag
+        copyInto(n, dest, o);             // unknown tag: keep its content, drop the tag
       }
     }
   }
@@ -113,13 +163,17 @@
     })(container);
   }
 
-  function buildOne(html, counter) {
+  function buildOne(html, counter, o) {
     html = String(html);
     if (html.indexOf('<') < 0) html = html.replace(/&/g, '&amp;').replace(/\r\n?|\n/g, '<br>');   // plain-text record
     var parsed = new DOMParser().parseFromString(html, 'text/html');
     var box = document.createElement('div');
     box.className = 'entry';
-    copyInto(parsed.body, box);
+    if (o.styled) {
+      Array.prototype.forEach.call(parsed.querySelectorAll('link[rel~="stylesheet" i][href]'), function (l) { o.styles.push({ href: l.getAttribute('href') }); });
+      Array.prototype.forEach.call(parsed.querySelectorAll('style'), function (st) { if (st.textContent.trim()) o.styles.push({ css: st.textContent }); });
+    }
+    copyInto(parsed.body, box, o);
     splitBreaks(box);
     if (!Array.prototype.some.call(box.childNodes, isBlock)) {
       var run = document.createElement('div');
@@ -132,13 +186,16 @@
   }
 
   // Builds one container for a list of record HTML strings (e.g. homographs) with continuous chunk numbers.
-  function build(htmls) {
+  // opts: { styled: keep dictionary styling, has(path): is this resource in a loaded .mdd }
+  function build(htmls, opts) {
+    opts = opts || {};
     var wrap = document.createElement('div'), counter = { n: 0 };
+    var o = { styled: !!opts.styled, has: opts.has || null, styles: [] };
     htmls.forEach(function (h, i) {
       if (i > 0) wrap.appendChild(document.createElement('hr')).className = 'entry-sep';
-      wrap.appendChild(buildOne(h, counter));
+      wrap.appendChild(buildOne(h, counter, o));
     });
-    return { node: wrap, chunkCount: counter.n };
+    return { node: wrap, chunkCount: counter.n, styles: o.styles };
   }
 
   // Plain text of an element: whitespace collapsed, <br> -> newline.

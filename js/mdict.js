@@ -4,7 +4,8 @@
  *
  * Supported: zlib / LZO / uncompressed blocks, UTF-8 / UTF-16 / GBK / Big5 headwords,
  *            "Encrypted=2" (obfuscated key index, no password needed).
- * Not supported: MDX v3, dictionaries locked with a registration code, .mdd resource files.
+ * Also reads .mdd resource files (dict.meta.isMdd): keys are file paths, records are raw bytes
+ *            (dict.readBytes(index)). Not supported: MDX v3, dictionaries locked with a registration code.
  *
  * Usage:
  *   const dict = await MDict.open(fileOrBlob, { onProgress: (frac, label) => {} });
@@ -306,7 +307,8 @@
     return data;
   };
 
-  Dictionary.prototype.readRecord = async function (i) {
+  // Raw bytes of record i (what an .mdd stores: images, CSS, audio, fonts).
+  Dictionary.prototype.readBytes = async function (i) {
     var start = this.offsets[i];
     var end = i + 1 < this.offsets.length ? this.offsets[i + 1] : this.totalDecomp;
     if (end <= start) end = this.totalDecomp;
@@ -323,7 +325,11 @@
     var bytes;
     if (parts.length === 1) bytes = parts[0];
     else { bytes = new Uint8Array(total); var p = 0; parts.forEach(function (x) { bytes.set(x, p); p += x.length; }); }
-    var text = this.decoder.decode(bytes);
+    return bytes;
+  };
+
+  Dictionary.prototype.readRecord = async function (i) {
+    var text = this.decoder.decode(await this.readBytes(i));
     return text.replace(/\u0000+$/, '');
   };
 
@@ -351,11 +357,10 @@
       throw new Error('This does not look like an MDX dictionary file.');
     }
     var headerBytes = await readBytes(blob, 4, headerLen);
-    var attrs = parseHeaderAttrs(new TextDecoder('utf-16le').decode(headerBytes));
+    var headerText = new TextDecoder('utf-16le').decode(headerBytes);
+    var attrs = parseHeaderAttrs(headerText);
     if (!attrs.GeneratedByEngineVersion) throw new Error('This does not look like an MDX dictionary file.');
-    if (attrs.Library_Data !== undefined && attrs.Library_Data !== '') {
-      throw new Error('This looks like a resource (.mdd) file. Please choose the .mdx file.');
-    }
+    var isMdd = /^\s*<Library_Data/i.test(headerText);   // resource file: keys are paths, records are bytes
 
     var version = parseFloat(attrs.GeneratedByEngineVersion);
     if (!(version >= 1) || version >= 3) throw new Error('MDX version ' + attrs.GeneratedByEngineVersion + ' is not supported (only 1.x and 2.x).');
@@ -366,7 +371,7 @@
     else if (attrs.Encrypted && attrs.Encrypted !== 'No') encrypted = parseInt(attrs.Encrypted, 10) || 0;
     if (encrypted & 1) throw new Error('This dictionary is locked with a registration code, which is not supported.');
 
-    var enc = pickEncoding(attrs.Encoding);
+    var enc = isMdd ? { name: 'utf-16le', width: 2 } : pickEncoding(attrs.Encoding);
     try { new TextDecoder(enc.name); } catch (e) { throw new Error('Unsupported text encoding: ' + attrs.Encoding); }
     var decoder = new TextDecoder(enc.name);
 
@@ -437,14 +442,14 @@
     progress(0.8, 'Sorting headwords');
     await yieldToUi();
     var n = keys.length, lower = new Array(n), idx = new Array(n);
-    for (var k = 0; k < n; k++) { lower[k] = keys[k].toLowerCase(); idx[k] = k; }
-    idx.sort(function (a, b) { return lower[a] < lower[b] ? -1 : lower[a] > lower[b] ? 1 : a - b; });
+    for (var k = 0; k < n; k++) { lower[k] = isMdd ? '' : keys[k].toLowerCase(); idx[k] = k; }
+    if (!isMdd) idx.sort(function (a, b) { return lower[a] < lower[b] ? -1 : lower[a] > lower[b] ? 1 : a - b; });
     progress(1, 'Done');
 
     var title = String(attrs.Title || '').replace(/<[^>]*>/g, '').trim();
     var meta = {
       title: title, version: attrs.GeneratedByEngineVersion, encoding: enc.name, entries: n,
-      declaredEntries: nEntries, description: String(attrs.Description || '').replace(/<[^>]*>/g, '').trim()
+      isMdd: isMdd, declaredEntries: nEntries, description: String(attrs.Description || '').replace(/<[^>]*>/g, '').trim()
     };
     return new Dictionary(blob, {
       meta: meta, enc: enc, keys: keys, offsets: Float64Array.from(offs),

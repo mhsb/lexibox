@@ -71,6 +71,12 @@
     getDictIndex: function () { return withStore('blobs', 'readonly', function (s) { return s.get('dictIndex'); }); },
     putDictIndex: function (idx) { return withStore('blobs', 'readwrite', function (s) { return s.put(idx, 'dictIndex'); }); },
 
+    // Resource files (.mdd): the blobs and their parsed indexes (a map from file signature to index).
+    getMedia: function () { return withStore('blobs', 'readonly', function (s) { return s.get('media'); }); },
+    putMedia: function (list) { return withStore('blobs', 'readwrite', function (s) { return s.put(list, 'media'); }); },
+    getMediaIndex: function () { return withStore('blobs', 'readonly', function (s) { return s.get('mediaIndex'); }); },
+    putMediaIndex: function (map) { return withStore('blobs', 'readwrite', function (s) { return s.put(map, 'mediaIndex'); }); },
+
     clearAll: function () {
       return Promise.all([
         withStore('entries', 'readwrite', function (s) { return s.clear(); }),

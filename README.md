@@ -36,11 +36,11 @@ Android app (the "Process text" action), which the later Android version can pro
 
 ## Reader
 New users: **Try the demo** (on the home page and at the end of the tutorial) opens a short text and a coach walks through tapping a word, resizing the panel, adding a card, the search tab and turning pages.
-Tap **Open a book or text file** (between the search field and the entry) to read an **EPUB, DOCX,
+Tap **Open or paste text** (between the search field and the entry) to read an **EPUB, DOCX,
 Markdown, HTML or plain text** file, or share longer text from another app. It fills the home page and is
 paginated; headings, bold/italic, lists, quotes and tables are kept. Your place, text size and font are remembered.
 - Swipe sideways or tap the empty page edges to turn pages. Swipe down, or tap the **Search & options** tab at the top, to show the search field
-  (with Contents, Text size, Open and Close); swipe up or tap the page to hide it.
+  (with Contents, Text size, Open and Clear); swipe up or tap the page to hide it.
 - Tap a word: its definition rises from the bottom. Drag the handle to resize the panel, or press the
   arrow to hide it. "Add to notebook" fills the context with the sentence around the word.
 - Not supported: images, footnotes, DRM-protected EPUBs, PDF, ODT, DOC, DOCX numbering styles. Files up to 40 MB.
@@ -48,12 +48,19 @@ paginated; headings, bold/italic, lists, quotes and tables are kept. Your place,
 
 ## Limits
 - Supported: MDX v1/v2, zlib, LZO or stored blocks, UTF-8/UTF-16/GBK/Big5, key-index encryption.
-- Not supported: MDX v3, registration-locked (record-encrypted) files, `.mdd` media.
-- Dictionary CSS/images live in `.mdd` files, so entries are shown with the app's own styling.
+- Not supported: MDX v3, registration-locked (record-encrypted) files.
+- **Media (.mdd):** select the `.mdd` file(s) together with the `.mdx` (Settings > Choose dictionary file), or add them
+  later with "Add media files". Entries then use the dictionary's own stylesheet, images and pronunciation audio.
+  The CSS is sandboxed: it can only restyle the entry text (no positioning, no outside URLs, and the page colours and
+  background stay the app's, so dark mode keeps working). Turn it off with "Use the dictionary's own colours, fonts and images".
+  Without a `.mdd`, entries use the app's own styling and sound links are hidden.
+- To ship media with the site, put the file next to the dictionary and list it in `js/config.js`
+  (`BUNDLED_MEDIA: ['dict/dict.mdd']`), then change `BUNDLED_DICT_VERSION`.
 
 ## Tests (Node, plus Playwright for the browser test)
     node tests/test-mdict.js
     node tests/test-leitner.js
+    node tests/test-media.js
     node tests/e2e.js
 
 ## Credits

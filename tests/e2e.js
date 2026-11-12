@@ -10,7 +10,7 @@ const os = require('os');
 const path = require('path');
 const http = require('http');
 const { chromium, devices } = require('playwright');
-const { buildMdx } = require('./build-mdx.js');
+const { buildMdx, buildMdd } = require('./build-mdx.js');
 
 const ROOT = path.join(__dirname, '..');
 const SHOTS = process.argv[2] || null;
@@ -22,8 +22,20 @@ for (const f of ['index.html', 'sw.js', 'manifest.webmanifest']) fs.copyFileSync
 for (const d of ['css', 'js', 'icons']) fs.cpSync(path.join(ROOT, d), path.join(site, d), { recursive: true });
 fs.mkdirSync(path.join(site, 'dict'));
 
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+function wav() {
+  const data = Buffer.alloc(800, 128), h = Buffer.alloc(44);
+  h.write('RIFF', 0); h.writeUInt32LE(36 + data.length, 4); h.write('WAVEfmt ', 8); h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22);
+  h.writeUInt32LE(8000, 24); h.writeUInt32LE(8000, 28); h.writeUInt16LE(1, 32); h.writeUInt16LE(8, 34); h.write('data', 36); h.writeUInt32LE(data.length, 40);
+  return Buffer.concat([h, data]);
+}
+const mddA = [
+  { key: '\\dict.css', data: Buffer.from('body{color:#000;background:#fff} .hw{color:rgb(200,0,0);background:url(logo.png) no-repeat} h2{color:rgb(1,2,3)} #entry-word{color:rgb(1,2,3)} .pron{position:fixed;top:0;z-index:99} @import url("http://example.com/x.css"); @font-face{font-family:XF;src:url(\\f.woff)}') },
+  { key: '\\img\\logo.png', data: PNG },
+  { key: '\\snd\\run.wav', data: wav() },
+];
 const entriesA = [
-  { key: 'run', text: '<div class="hw">run</div><div class="pron">/rʌn/ <span class="ipa">BrE rʌn</span></div>' +
+  { key: 'run', text: '<link rel="stylesheet" type="text/css" href="dict.css"><div class="hw">run</div><div class="pron">/rʌn/ <span class="ipa">BrE rʌn</span> <a href="sound://snd/run.wav"></a><img src="img/logo.png" alt=""></div>' +
       '<ol><li>to move quickly on foot: <i>She runs every morning.</i></li><li>to manage or operate a business</li><li>to flow, as water does</li></ol>' +
       '<div class="idiom">in the long run: in the end, after a long time</div>' },
   { key: 'ephemeral', text: '<b>ephemeral</b> /ɪˈfɛm(ə)rəl/<br>lasting for a very short time<br>Example: fashions are ephemeral.' },
@@ -33,11 +45,13 @@ const entriesA = [
   { key: 'runner', text: '<p>a person who runs</p>' },
 ];
 fs.writeFileSync(path.join(site, 'dict', 'dict.mdx'), buildMdx(entriesA, { version: 2, title: 'Test Dictionary A' }));
+fs.writeFileSync(path.join(site, 'dict', 'dict.mdd'), buildMdd(mddA, { version: 2 }));
+fs.writeFileSync(path.join(site, 'js', 'config.js'), "window.APP_CONFIG = { BUNDLED_DICT: 'dict/dict.mdx', BUNDLED_MEDIA: ['dict/dict.mdd'], BUNDLED_DICT_VERSION: '1' };\n");
 const entriesB = [{ key: 'zebra', text: '<p>an African animal with black and white stripes</p>' }];
 const otherDict = path.join(site, 'other.mdx');
 fs.writeFileSync(otherDict, buildMdx(entriesB, { version: 2, encryptInfo: true, title: 'Other Dictionary B' }));
 
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.mdx': 'application/octet-stream' };
+const MIME = { '.mdd': 'application/octet-stream', '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.mdx': 'application/octet-stream' };
 const server = http.createServer((req, res) => {
   const p = decodeURIComponent(req.url.split('?')[0]);
   const file = path.join(site, p === '/' ? 'index.html' : p);
@@ -95,6 +109,21 @@ async function shot(page, name) { if (SHOTS) await page.waitForTimeout(700); if 
   const chunks = await page.$$eval('#entry-view .chunk', l => l.map(x => x.textContent));
   check('entry is split into paragraph chunks', chunks.length >= 5, chunks);
   check('phonetics are shown intact', (await page.textContent('#entry-view')).includes('/rʌn/'));
+
+  console.log('Dictionary media (.mdd)');
+  const redOf = () => page.evaluate(() => { const e = document.querySelector('#entry-view .d-hw'); return e && getComputedStyle(e).color; });
+  check('the bundled .mdd styles the entry (headword colour from dict.css)', (await redOf()) === 'rgb(200, 0, 0)', await redOf());
+  await page.waitForFunction(() => { const i = document.querySelector('#entry-view img.dict-img'); return i && i.complete && i.naturalWidth === 1; }, null, { timeout: 5000 });
+  check('an image from the .mdd is shown', true);
+  check('the dictionary background image became a blob URL', await page.evaluate(() => /^url\("blob:/.test(getComputedStyle(document.querySelector('#entry-view .d-hw')).backgroundImage)));
+  check('dictionary CSS cannot restyle the app (h2 and #entry-word rules are scoped)', await page.evaluate(() => getComputedStyle(document.getElementById('entry-word')).color !== 'rgb(1, 2, 3)'));
+  check('position:fixed from dictionary CSS is dropped', await page.evaluate(() => getComputedStyle(document.querySelector('#entry-view .d-pron')).position !== 'fixed'));
+  check('a sound button is shown', (await page.$$('#entry-view a.dict-sound')).length === 1);
+  await page.evaluate(() => { window.__played = null; HTMLMediaElement.prototype.play = function () { window.__played = this.src; return Promise.resolve(); }; });
+  await page.click('#entry-view a.dict-sound');
+  await page.waitForFunction(() => window.__played);
+  check('tapping it plays the audio from the .mdd without picking a paragraph', (await page.evaluate(() => window.__played)).startsWith('blob:') && (await page.$$('#entry-view .chunk.picked')).length === 0);
+  check('sound and image do not add text to the definition', !(await page.textContent('#entry-view')).includes('▶'));
   await shot(page, '1-entry');
 
   console.log('Picking paragraphs');
@@ -179,9 +208,21 @@ async function shot(page, name) { if (SHOTS) await page.waitForTimeout(700); if 
 
   console.log('Settings, another dictionary, offline');
   await page.click('.tabs button[data-tab=settings]');
+  check('settings list the bundled media file', (await page.textContent('#dict-info')).includes('dict.mdd'));
+  await page.uncheck('#set-dict-style');
+  await page.click('.tabs button[data-tab=lookup]');
+  await page.waitForSelector('#entry-view .d-hw');
+  check('switching off dictionary styling shows the entry plain', (await page.evaluate(() => getComputedStyle(document.querySelector('#entry-view .d-hw')).color)) !== 'rgb(200, 0, 0)' && (await page.$$('#entry-view img')).length === 0 && (await page.$$('#entry-view a.dict-sound')).length === 0);
+  await page.click('.tabs button[data-tab=settings]');
+  await page.check('#set-dict-style');
+  await page.click('.tabs button[data-tab=lookup]');
+  await page.waitForFunction(() => { const e = document.querySelector('#entry-view .d-hw'); return e && getComputedStyle(e).color === 'rgb(200, 0, 0)'; });
+  check('and switching it on again restores the styling', true);
+  await page.click('.tabs button[data-tab=settings]');
   await page.setInputFiles('#file-dict', otherDict);
   await page.waitForFunction(() => document.getElementById('dict-title').textContent.includes('Other Dictionary B'), null, { timeout: 20000 });
   check('a dictionary chosen from storage (with encrypted key index) replaces the bundled one', true);
+  check('choosing a dictionary without .mdd files removes the old media', (await page.textContent('#dict-info')).includes('none') && await page.isHidden('#btn-clear-media'));
   await page.click('.tabs button[data-tab=lookup]');
   await page.fill('#q', 'zebra'); await page.press('#q', 'Enter');
   await page.waitForSelector('#entry-view .chunk');
@@ -203,6 +244,46 @@ async function shot(page, name) { if (SHOTS) await page.waitForTimeout(700); if 
   check('tutorial can be reopened from Settings', await page.evaluate(() => document.getElementById('tour-dialog').open));
   await page.click('#tour-skip');
   await context.setOffline(false);
+
+  console.log('Choosing an .mdx together with its .mdd');
+  const mddC = buildMdd([
+    { key: '\\s.css', data: Buffer.from('.k{color:rgb(10,120,30);position:fixed} h2{color:rgb(1,2,3)} @media (min-width:1px){.k{font-weight:700}} body{color:#fff;background:#000}') },
+    { key: '\\pic.png', data: PNG },
+  ], { version: 1.2 });
+  const mdxC = buildMdx([{ key: 'kiwi', text: '<link rel="stylesheet" href="s.css"><span class="k">a flightless bird</span><img src="/pic.png">' }], { version: 2, title: 'Dictionary C' });
+  const fC = path.join(site, 'c.mdx'), fCd = path.join(site, 'c.mdd');
+  fs.writeFileSync(fC, mdxC); fs.writeFileSync(fCd, mddC);
+  await page.click('.tabs button[data-tab=settings]');
+  await page.setInputFiles('#file-dict', [fC, fCd]);
+  await page.waitForFunction(() => document.getElementById('dict-title').textContent.includes('Dictionary C'), null, { timeout: 20000 });
+  await page.waitForFunction(() => document.getElementById('dict-info').textContent.includes('c.mdd'));
+  check('the .mdx and its .mdd are installed together', true);
+  await page.click('.tabs button[data-tab=lookup]');
+  await page.fill('#q', 'kiwi'); await page.press('#q', 'Enter');
+  await page.waitForSelector('#entry-view .d-k');
+  check('inline-linked CSS from the .mdd applies (@media rules too)', await page.evaluate(() => { const c = getComputedStyle(document.querySelector('#entry-view .d-k')); return c.color === 'rgb(10, 120, 30)' && c.fontWeight === '700' && c.position !== 'fixed'; }));
+  check('root (body) colour and background from dictionary CSS are not applied to the entry', await page.evaluate(() => { const c = getComputedStyle(document.querySelector('#entry-view .entry')); return c.backgroundColor !== 'rgb(0, 0, 0)' && c.color !== 'rgb(255, 255, 255)'; }));
+  await page.waitForFunction(() => { const i = document.querySelector('#entry-view img.dict-img'); return i && i.naturalWidth === 1; });
+  check('an image referenced with a leading slash is found', true);
+  await context.setOffline(true);
+  await page.reload();
+  await page.waitForFunction(() => !document.getElementById('q').disabled, null, { timeout: 20000 });
+  await page.fill('#q', 'kiwi'); await page.press('#q', 'Enter');
+  await page.waitForSelector('#entry-view .d-k');
+  check('media survive an offline reload', await page.evaluate(() => getComputedStyle(document.querySelector('#entry-view .d-k')).color === 'rgb(10, 120, 30)'));
+  await context.setOffline(false);
+  await page.click('.tabs button[data-tab=settings]');
+  await page.click('#btn-clear-media');
+  await page.click('.tabs button[data-tab=lookup]');
+  await page.waitForFunction(() => { const e = document.querySelector('#entry-view .d-k'); return e && getComputedStyle(e).color !== 'rgb(10, 120, 30)'; });
+  check('Remove media files plain-renders the entry again', (await page.$$('#entry-view img')).length === 0);
+  await page.click('.tabs button[data-tab=settings]');
+  await page.setInputFiles('#file-media', fCd);
+  await page.waitForFunction(() => document.getElementById('dict-info').textContent.includes('c.mdd'));
+  check('"Add media files" attaches an .mdd to the current dictionary', true);
+  await page.setInputFiles('#file-dict', otherDict);
+  await page.waitForFunction(() => document.getElementById('dict-title').textContent.includes('Other Dictionary B'), null, { timeout: 20000 });
+  fs.unlinkSync(fC); fs.unlinkSync(fCd);
 
   console.log('Reader');
   const fx = fs.mkdtempSync(path.join(os.tmpdir(), 'dn-fx-'));
@@ -246,6 +327,15 @@ async function shot(page, name) { if (SHOTS) await page.waitForTimeout(700); if 
     await page.waitForSelector('#rd-flow h1, #rd-flow p');
   };
 
+  await page.click('#btn-open-doc');
+  await page.waitForSelector('#open-dialog[open]');
+  check('Open or paste dialog has a file button and a paste box', await page.isVisible('#od-file') && await page.isVisible('#od-text'));
+  check('Read is disabled while the box is empty', await page.isDisabled('#od-read'));
+  await page.fill('#od-text', 'A zebra runs fast, today. Then it stopped near the river.');
+  await page.click('#od-read');
+  await page.waitForFunction(() => document.body.classList.contains('reading'));
+  check('pasted text opens in the reader', (await page.textContent('#rd-title')).includes('Pasted text'));
+  check('the clear button says Clear', (await page.textContent('#rd-btn-close')).trim() === 'Clear');
   await openBook('sample.epub');
   check('epub opens and fills the home page', await page.evaluate(() => document.getElementById('reader').getBoundingClientRect().height > 300));
   check('epub heading is rendered as a heading', (await page.textContent('#rd-flow h1')) === 'The First Chapter');

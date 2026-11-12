@@ -9,7 +9,7 @@
  */
 'use strict';
 
-var CACHE = 'dictionary-notebook-shell-v7';
+var CACHE = 'dictionary-notebook-shell-v8';
 var SHELL = [
   './',
   'index.html',
@@ -23,6 +23,7 @@ var SHELL = [
   'js/zip.js',
   'js/docs.js',
   'js/reader.js',
+  'js/media.js',
   'js/app.js',
   'icons/icon-192.png',
   'icons/icon-512.png'
